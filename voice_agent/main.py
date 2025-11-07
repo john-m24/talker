@@ -4,7 +4,7 @@ import sys
 import time
 from .stt import transcribe_once
 from .ai_agent import AIAgent
-from .window_control import list_running_apps, list_installed_apps, activate_app
+from .window_control import list_running_apps, list_installed_apps, activate_app, place_app_on_monitor
 from .tab_control import list_chrome_tabs, switch_to_chrome_tab
 from .config import LLM_ENDPOINT, STT_ENGINE
 
@@ -16,6 +16,8 @@ def print_help():
     print("=" * 60)
     print("\n🎤 Voice Commands:")
     print("  - 'Bring [App] to view' / 'Focus [App]' / 'Show [App]'")
+    print("  - 'Put [App] on [main/right/left] monitor' / 'Move [App] to [main/right/left] screen'")
+    print("  - 'Place [App] on [monitor] and maximize'")
     print("  - 'List apps' / 'What's running'")
     print("  - 'Switch to [Tab]' / 'Go to tab [Number]' / 'List tabs'")
     print("  - 'quit' or 'exit' to stop")
@@ -109,6 +111,28 @@ def main():
                         print(f"✗ Failed to activate '{app_name}'\n")
                 else:
                     print("Error: No app name specified in intent\n")
+            
+            elif intent_type == "place_app":
+                app_name = intent.get("app_name")
+                monitor = intent.get("monitor")
+                maximize = intent.get("maximize", False)
+                
+                if app_name and monitor:
+                    monitor_display = monitor.replace("_", " ").title()
+                    maximize_text = " and maximizing" if maximize else ""
+                    print(f"Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
+                    success = place_app_on_monitor(app_name, monitor, maximize=maximize)
+                    if success:
+                        print(f"✓ Successfully placed '{app_name}' on {monitor_display} monitor\n")
+                    else:
+                        print(f"✗ Failed to place '{app_name}' on {monitor_display} monitor\n")
+                else:
+                    missing = []
+                    if not app_name:
+                        missing.append("app name")
+                    if not monitor:
+                        missing.append("monitor")
+                    print(f"Error: Missing {', '.join(missing)} in intent\n")
             
             elif intent_type == "switch_tab":
                 tab_title = intent.get("tab_title")

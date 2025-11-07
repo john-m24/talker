@@ -37,3 +37,22 @@ STT_ENGINE = _default_stt
 WHISPER_MODEL = os.getenv("VOICE_AGENT_WHISPER_MODEL", "tiny")
 # Silence duration threshold for automatic speech end detection (in seconds)
 SILENCE_DURATION = float(os.getenv("VOICE_AGENT_SILENCE_DURATION", "0.5"))
+
+# Monitor coordinates for multi-monitor window placement
+# Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
+# Coordinates are absolute screen coordinates
+# 
+# To find your monitor coordinates on macOS:
+# 1. Open System Settings > Displays
+# 2. Arrange your displays and note their positions
+# 3. Use AppleScript: osascript -e 'tell application "System Events" to get bounds of every window of every process'
+#    Or use a tool like DisplayLink Manager or check display arrangement
+#
+# Default: Single monitor setup
+# To add more monitors, uncomment and adjust the "right" and "left" entries below
+MONITORS = {
+    "left": {"x": 0, "y": 0, "w": 1920, "h": 1080},  # Main monitor (1920x1080)
+    "right": {"x": 1920, "y": 0, "w": 1920, "h": 1080},  # Right monitor (1920x1080)
+    # Uncomment below to add a left monitor:
+    # "left": {"x": -1920, "y": 0, "w": 1920, "h": 1080},  # Left monitor (standard 1920x1080)
+}

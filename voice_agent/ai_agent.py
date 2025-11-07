@@ -43,8 +43,9 @@ class AIAgent:
             chrome_tabs: Optional list of Chrome tabs with 'index' and 'title' keys
             
         Returns:
-            Dictionary with 'type' and optionally 'app_name', 'tab_title', or 'tab_index' keys
+            Dictionary with 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', or 'tab_index' keys
             Example: {"type": "focus_app", "app_name": "Docker Desktop"}
+            Example: {"type": "place_app", "app_name": "Google Chrome", "monitor": "right", "maximize": false}
             Example: {"type": "switch_tab", "tab_title": "Gmail"}
         """
         # Build context for the AI
@@ -54,6 +55,7 @@ class AIAgent:
             "Available commands:",
             "- 'list_apps' or 'list applications' - list running applications",
             "- 'focus_app' - bring an application to the front",
+            "- 'place_app' - move an application window to a specific monitor (main, right, or left)",
             "- 'switch_tab' - switch to a specific Chrome tab",
             "- 'list_tabs' - list all open Chrome tabs",
             "",
@@ -83,13 +85,22 @@ class AIAgent:
             text,
             "",
             "Return a JSON object with:",
-            "- 'type': either 'list_apps', 'focus_app', 'switch_tab', or 'list_tabs'",
-            "- 'app_name': (for focus_app) the exact application name from the running apps list",
+            "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', or 'list_tabs'",
+            "- 'app_name': (for focus_app and place_app) the exact application name from the running apps list",
+            "- 'monitor': (for place_app) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
+            "- 'maximize': (for place_app, optional boolean) true if user wants to maximize the window, false otherwise",
             "- 'tab_title': (for switch_tab) match keywords from the user's command to the Chrome tab titles",
             "- 'tab_index': (for switch_tab, optional) the tab number if user specifies a number",
             "",
+            "Monitor placement patterns to recognize:",
+            "- 'put X on [right/left/main] monitor' -> type: 'place_app', monitor: 'right'/'left'/'main'",
+            "- 'move X to [main/right/left] screen/display' -> type: 'place_app', monitor: 'main'/'right'/'left'",
+            "- 'place X on [monitor] and maximize' -> type: 'place_app', monitor: [monitor], maximize: true",
+            "- 'show X on [monitor]' -> type: 'place_app', monitor: [monitor]",
+            "",
             "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
             "If no matching app is found in running apps, use the closest match from installed apps.",
+            "If the user wants to place an app on a monitor, use type 'place_app' and extract the monitor name.",
             "If the user wants to switch tabs, match keywords from their command to the Chrome tab titles.",
             "For example: 'Gmail' matches 'Gmail - Inbox', 'YouTube' matches 'YouTube - Watch', etc.",
             "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
@@ -97,6 +108,13 @@ class AIAgent:
         ])
         
         prompt = "\n".join(context_parts)
+        
+        # Debug: Print the prompt being sent to the LLM
+        print("\n" + "=" * 80)
+        print("DEBUG: Prompt sent to LLM:")
+        print("=" * 80)
+        print(prompt)
+        print("=" * 80 + "\n")
         
         try:
             # Try with response_format first (for models that support JSON mode)
@@ -137,6 +155,11 @@ class AIAgent:
             # Extract JSON from response
             content = response.choices[0].message.content.strip()
             
+            # Debug: Print the raw response from the LLM
+            print("DEBUG: Raw LLM response:")
+            print(content)
+            print()
+            
             # Try to extract JSON from code blocks if present
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -146,6 +169,11 @@ class AIAgent:
             # Parse JSON
             try:
                 intent = json.loads(content)
+                
+                # Debug: Print the parsed intent
+                print("DEBUG: Parsed intent:")
+                print(json.dumps(intent, indent=2))
+                print()
                 
                 # Validate structure
                 if "type" not in intent:
