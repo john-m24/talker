@@ -5,8 +5,8 @@ import sounddevice as sd
 import numpy as np
 import threading
 import time
-from typing import Optional
-from .config import STT_ENGINE, WHISPER_MODEL
+from typing import Optional, Tuple
+from .config import STT_ENGINE, WHISPER_MODEL, SILENCE_DURATION
 
 # Fix SSL certificate issues on macOS
 # Set SSL_CERT_FILE to Python's certifi certificates if not already set
@@ -71,6 +71,81 @@ def _get_macos_recognition_delegate_class():
     return _macos_recognition_delegate_class
 
 
+def _calculate_audio_energy(audio_chunk: np.ndarray) -> float:
+    """
+    Calculate RMS energy of audio chunk and convert to dB.
+    
+    Args:
+        audio_chunk: Audio data as numpy array
+        
+    Returns:
+        Energy in dB
+    """
+    rms = np.sqrt(np.mean(audio_chunk**2))
+    # Convert to dB, avoid log(0) by adding small epsilon
+    db = 20 * np.log10(rms + 1e-10)
+    return db
+
+
+def _detect_speech_start(audio_chunk: np.ndarray, speech_threshold_db: float = -40.0) -> bool:
+    """
+    Detect if speech has started by checking if audio energy exceeds threshold.
+    
+    Args:
+        audio_chunk: Audio data as numpy array
+        speech_threshold_db: Energy threshold in dB (default: -40 dB)
+        
+    Returns:
+        True if speech detected, False otherwise
+    """
+    energy_db = _calculate_audio_energy(audio_chunk)
+    return energy_db > speech_threshold_db
+
+
+def _detect_speech_end(
+    audio_chunk: np.ndarray,
+    silence_start_time: Optional[float],
+    speech_threshold_db: float = -40.0,
+    silence_duration: float = 1.5,
+    current_time: Optional[float] = None
+) -> Tuple[bool, Optional[float]]:
+    """
+    Detect if speech has ended by checking if silence persists for configured duration.
+    
+    Args:
+        audio_chunk: Audio data as numpy array
+        silence_start_time: Timestamp when silence started (None if speech is active)
+        speech_threshold_db: Energy threshold in dB (default: -40 dB)
+        silence_duration: Required silence duration in seconds (default: 1.5s)
+        current_time: Current timestamp (if None, uses time.time())
+        
+    Returns:
+        Tuple of (speech_ended, new_silence_start_time)
+        - speech_ended: True if silence duration exceeded threshold
+        - new_silence_start_time: Updated silence start time (None if speech detected)
+    """
+    if current_time is None:
+        current_time = time.time()
+    
+    energy_db = _calculate_audio_energy(audio_chunk)
+    is_silent = energy_db <= speech_threshold_db
+    
+    if is_silent:
+        if silence_start_time is None:
+            # Silence just started
+            return False, current_time
+        else:
+            # Check if silence duration exceeded threshold
+            elapsed_silence = current_time - silence_start_time
+            if elapsed_silence >= silence_duration:
+                return True, silence_start_time
+            else:
+                return False, silence_start_time
+    else:
+        # Speech detected, reset silence timer
+        return False, None
+
+
 def _get_whisper_model(model_name: str = "base"):
     """Get or load the Whisper model."""
     global _whisper_model
@@ -95,15 +170,16 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
     except ImportError:
         raise ImportError("PyObjC not installed. Install with: pip install pyobjc")
     
-    print("\n🎤 Listening... (speak now, press Enter when done)")
+    print("\n🎤 Listening... (speak now)")
     
     # Record audio using sounddevice (simpler than AVAudioEngine)
     sample_rate = 16000
     audio_queue = []
     recording = threading.Event()
     recording.set()
+    chunk_duration = 0.1  # Process chunks every 100ms
     
-    def audio_callback(indata, frames, time, status):
+    def audio_callback(indata, frames, time_info, status):
         """Callback for audio recording."""
         if recording.is_set():
             audio_queue.append(indata.copy())
@@ -113,19 +189,63 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
         samplerate=sample_rate,
         channels=1,
         dtype=np.float32,
-        callback=audio_callback
+        callback=audio_callback,
+        blocksize=int(sample_rate * chunk_duration)
     )
     
     stream.start()
     
-    # Wait for Enter key or timeout
-    try:
-        if timeout:
-            time.sleep(timeout)
-        else:
-            input()  # Wait for Enter
-    except (EOFError, KeyboardInterrupt):
-        pass
+    # Stage 1: Wait for speech to start
+    speech_detected = False
+    speech_start_timeout = 10.0  # 10 second timeout for speech start
+    start_wait_time = time.time()
+    
+    while not speech_detected:
+        elapsed = time.time() - start_wait_time
+        if elapsed > speech_start_timeout:
+            print("   (No speech detected within timeout)")
+            recording.clear()
+            stream.stop()
+            stream.close()
+            return ""
+        
+        # Check audio queue for speech
+        if audio_queue:
+            chunk = audio_queue[-1]
+            if _detect_speech_start(chunk):
+                speech_detected = True
+                print("   Speech detected, listening...")
+                break
+        
+        time.sleep(0.05)  # Small delay to avoid busy waiting
+    
+    # Stage 2: Record while speaking, detect end
+    silence_start_time = None
+    min_recording_duration = 0.3  # Minimum 0.3s recording after speech starts
+    speech_start_time = time.time()
+    
+    while True:
+        current_time = time.time()
+        
+        # Check if we have minimum recording duration
+        if (current_time - speech_start_time) < min_recording_duration:
+            time.sleep(0.05)
+            continue
+        
+        # Check audio queue for silence
+        if audio_queue:
+            chunk = audio_queue[-1]
+            speech_ended, silence_start_time = _detect_speech_end(
+                chunk,
+                silence_start_time,
+                silence_duration=SILENCE_DURATION,
+                current_time=current_time
+            )
+            
+            if speech_ended:
+                break
+        
+        time.sleep(0.05)
     
     # Stop recording
     recording.clear()
@@ -273,14 +393,15 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
     
     model = _get_whisper_model(WHISPER_MODEL)
     
-    print("\n🎤 Listening... (speak now, press Enter when done)")
+    print("\n🎤 Listening... (speak now)")
     
     # Record audio using thread-safe queue
     audio_queue = queue.Queue()
     recording = threading.Event()
     recording.set()
+    chunk_duration = 0.1  # Process chunks every 100ms
     
-    def audio_callback(indata, frames, time, status):
+    def audio_callback(indata, frames, time_info, status):
         """Callback for audio recording."""
         if status:
             print(f"Audio status: {status}")
@@ -292,30 +413,77 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
         samplerate=sample_rate,
         channels=1,
         dtype=np.float32,
-        callback=audio_callback
+        callback=audio_callback,
+        blocksize=int(sample_rate * chunk_duration)
     )
     
     stream.start()
     
-    # Wait for Enter key or timeout
-    try:
-        if timeout:
-            import time
-            time.sleep(timeout)
-        else:
-            input()  # Wait for Enter
-    except (EOFError, KeyboardInterrupt):
-        pass
+    # Stage 1: Wait for speech to start
+    speech_detected = False
+    speech_start_timeout = 10.0  # 10 second timeout for speech start
+    start_wait_time = time.time()
+    audio_chunks = []  # Store all chunks for transcription
+    
+    while not speech_detected:
+        elapsed = time.time() - start_wait_time
+        if elapsed > speech_start_timeout:
+            print("   (No speech detected within timeout)")
+            recording.clear()
+            stream.stop()
+            stream.close()
+            return ""
+        
+        # Collect chunks and check latest for speech
+        while not audio_queue.empty():
+            chunk = audio_queue.get()
+            audio_chunks.append(chunk)
+        
+        # Check latest chunk for speech
+        if audio_chunks:
+            if _detect_speech_start(audio_chunks[-1]):
+                speech_detected = True
+                print("   Speech detected, listening...")
+                break
+        
+        time.sleep(0.05)  # Small delay to avoid busy waiting
+    
+    # Stage 2: Record while speaking, detect end
+    silence_start_time = None
+    min_recording_duration = 0.3  # Minimum 0.3s recording after speech starts
+    speech_start_time = time.time()
+    
+    while True:
+        current_time = time.time()
+        
+        # Collect new chunks
+        while not audio_queue.empty():
+            chunk = audio_queue.get()
+            audio_chunks.append(chunk)
+        
+        # Check if we have minimum recording duration
+        if (current_time - speech_start_time) < min_recording_duration:
+            time.sleep(0.05)
+            continue
+        
+        # Check latest chunk for silence
+        if audio_chunks:
+            speech_ended, silence_start_time = _detect_speech_end(
+                audio_chunks[-1],
+                silence_start_time,
+                silence_duration=SILENCE_DURATION,
+                current_time=current_time
+            )
+            
+            if speech_ended:
+                break
+        
+        time.sleep(0.05)
     
     # Stop recording
     recording.clear()
     stream.stop()
     stream.close()
-    
-    # Collect all audio chunks
-    audio_chunks = []
-    while not audio_queue.empty():
-        audio_chunks.append(audio_queue.get())
     
     if not audio_chunks:
         print("   (No audio recorded)")

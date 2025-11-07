@@ -19,10 +19,7 @@ def print_help():
     print(f"\nUsing LLM endpoint: {LLM_ENDPOINT}")
     print(f"Using STT engine: {STT_ENGINE.upper()}")
     print("=" * 60)
-    if STT_ENGINE.lower() in ["whisper", "macos"]:
-        print("\nSpeak your command, then press Enter when done.\n")
-    else:
-        print("\nSpeak your command (will auto-detect start/stop).\n")
+    print("\nSpeak your command (will auto-detect when you start and stop speaking).\n")
 
 
 def main():
