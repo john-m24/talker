@@ -3,13 +3,14 @@
 import sys
 import time
 from typing import Optional, Tuple
-from .stt import transcribe_once
+from .stt import transcribe_while_held
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps
 from .tab_control import list_chrome_tabs
 from .clarification import show_clarification_dialog
 from .commands import CommandExecutor
-from .config import LLM_ENDPOINT, STT_ENGINE
+from .config import LLM_ENDPOINT, STT_ENGINE, HOTKEY
+from .hotkey import HotkeyListener
 
 
 def print_help():
@@ -17,6 +18,7 @@ def print_help():
     print("=" * 60)
     print("macOS Voice Window Agent")
     print("=" * 60)
+    print(f"\n⌨️  Hotkey: Press {HOTKEY} to activate (works from any window)")
     print("\n🎤 Voice Commands:")
     print("  - 'Bring [App] to view' / 'Focus [App]' / 'Show [App]'")
     print("  - 'Put [App] on [main/right/left] monitor' / 'Move [App] to [main/right/left] screen'")
@@ -27,7 +29,7 @@ def print_help():
     print(f"\nUsing LLM endpoint: {LLM_ENDPOINT}")
     print(f"Using STT engine: {STT_ENGINE.upper()}")
     print("=" * 60)
-    print("\nSpeak your command (will auto-detect when you start and stop speaking).\n")
+    print(f"\nHold {HOTKEY} to speak, release to process command.\n")
 
 
 def time_operation(operation_name: str, func, *args, **kwargs):
@@ -124,26 +126,64 @@ def main():
     # Initialize command executor
     command_executor = CommandExecutor()
     
-    # Main loop
+    # Initialize hotkey listener
+    try:
+        hotkey_listener = HotkeyListener(hotkey=HOTKEY)
+        hotkey_listener.start()
+    except Exception as e:
+        print(f"Error initializing hotkey listener: {e}")
+        print("Please check your Accessibility permissions in System Settings.")
+        sys.exit(1)
+    
+    # Main loop - wait for hotkey, then process command
+    print(f"👂 Waiting for hotkey ({HOTKEY})...\n")
+    
     while True:
         try:
-            # Get user input
-            text = time_operation("STT (Speech Recognition)", transcribe_once)
+            # Get current running apps for context (before waiting for hotkey)
+            running_apps = list_running_apps()
+            
+            # Build context for Whisper transcription (pre-built, no delay)
+            context_parts = [
+                "macOS window control commands.",
+                "Commands: bring to view, focus, list apps, switch tab, place on monitor, move to screen.",
+                "Monitor terms: main monitor, right monitor, left monitor, main screen, right screen, left screen."
+            ]
+            
+            if running_apps:
+                # Limit to first 20 apps to keep context manageable
+                apps_list = ", ".join(running_apps[:20])
+                context_parts.append(f"Running applications: {apps_list}.")
+            
+            context = " ".join(context_parts)
+            
+            # Wait for hotkey press
+            if not hotkey_listener.wait_for_hotkey():
+                continue
+            
+            print("✅ Hotkey pressed! Listening... (hold to speak, release to process)\n")
+            
+            # Record while hotkey is held (starts immediately, no delay)
+            text = time_operation(
+                "STT (Speech Recognition)",
+                transcribe_while_held,
+                hotkey_listener.is_hotkey_pressed,
+                context
+            )
             
             if not text:
+                print(f"👂 Waiting for hotkey ({HOTKEY})...\n")
                 continue
             
             # Check for quit commands
             if text.lower() in ["quit", "exit", "q"]:
                 print("Goodbye!")
+                hotkey_listener.stop()
                 break
-            
-            # Get current running apps for context
-            running_apps = time_operation("List apps", list_running_apps)
             
             # Get Chrome tabs if Chrome is running (for tab switching context)
             chrome_tabs = None
-            if "Google Chrome" in running_apps:
+            if running_apps and "Google Chrome" in running_apps:
                 chrome_tabs = list_chrome_tabs()
             
             # Parse intent using AI agent
@@ -161,16 +201,20 @@ def main():
             
             if text is None or intent is None:
                 # User cancelled clarification
+                print(f"👂 Waiting for hotkey ({HOTKEY})...\n")
                 continue
             
             # Execute command using command executor
             command_executor.execute(intent, running_apps=running_apps, chrome_tabs=chrome_tabs)
+            print(f"\n👂 Waiting for hotkey ({HOTKEY})...\n")
                 
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")
+            hotkey_listener.stop()
             break
         except Exception as e:
             print(f"Error: {e}\n")
+            print(f"👂 Waiting for hotkey ({HOTKEY})...\n")
 
 
 if __name__ == "__main__":

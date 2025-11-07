@@ -5,7 +5,7 @@ import numpy as np
 import threading
 import queue
 import time
-from typing import Optional
+from typing import Optional, Callable
 
 from ..base import STTEngine
 from ..audio import detect_speech_start, detect_speech_end
@@ -140,7 +140,106 @@ class WhisperSTTEngine(STTEngine):
         print("   Processing with Whisper...")
         
         # Transcribe with Whisper
-        result = model.transcribe(audio, language="en")
+        transcribe_options = {"language": "en"}
+        result = model.transcribe(audio, **transcribe_options)
+        text = result["text"].strip()
+        
+        if text:
+            print(f"   Heard: '{text}'")
+        else:
+            print("   (No speech detected)")
+        
+        return text
+    
+    def transcribe_while_held(self, is_held: Callable[[], bool], context: Optional[str] = None) -> str:
+        """
+        Record audio while hotkey is held, then transcribe.
+        
+        Args:
+            is_held: Callable that returns True while recording should continue
+            context: Optional context text to help with transcription accuracy
+        
+        Returns:
+            Transcribed text as a string
+        """
+        model = _get_whisper_model(WHISPER_MODEL)
+        
+        print("\n🎤 Listening... (hold hotkey to speak)")
+        
+        # Record audio using thread-safe queue
+        sample_rate = 16000
+        audio_queue = queue.Queue()
+        recording = threading.Event()
+        recording.set()
+        chunk_duration = 0.05  # Process chunks every 50ms
+        
+        def audio_callback(indata, frames, time_info, status):
+            """Callback for audio recording."""
+            if status:
+                print(f"Audio status: {status}")
+            if recording.is_set():
+                audio_queue.put(indata.copy())
+        
+        # Start recording
+        stream = sd.InputStream(
+            samplerate=sample_rate,
+            channels=1,
+            dtype=np.float32,
+            callback=audio_callback,
+            blocksize=int(sample_rate * chunk_duration)
+        )
+        
+        stream.start()
+        
+        # Record while hotkey is held
+        audio_chunks = []
+        min_recording_duration = 0.1  # Minimum 0.1s recording
+        
+        while is_held():
+            # Collect chunks
+            while not audio_queue.empty():
+                chunk = audio_queue.get()
+                audio_chunks.append(chunk)
+            
+            time.sleep(0.02)  # Small delay to avoid busy waiting
+        
+        # Wait a bit more to ensure we get all audio
+        time.sleep(0.1)
+        while not audio_queue.empty():
+            chunk = audio_queue.get()
+            audio_chunks.append(chunk)
+        
+        # Stop recording
+        recording.clear()
+        stream.stop()
+        stream.close()
+        
+        if not audio_chunks:
+            print("   (No audio recorded)")
+            return ""
+        
+        # Check minimum duration
+        duration = len(audio_chunks) * chunk_duration
+        if duration < min_recording_duration:
+            print("   (Recording too short)")
+            return ""
+        
+        audio = np.concatenate(audio_chunks, axis=0)
+        # Flatten to 1D array if needed (Whisper expects 1D array)
+        if audio.ndim > 1:
+            audio = audio.flatten()
+        print("   Processing with Whisper...")
+        
+        # Transcribe with Whisper
+        transcribe_options = {"language": "en"}
+        if context:
+            # Limit context to ~224 tokens (Whisper's effective limit)
+            # Roughly 1 token = 4 characters, so ~900 characters max
+            if len(context) > 900:
+                context = context[:900]
+            transcribe_options["initial_prompt"] = context
+        
+        result = model.transcribe(audio, **transcribe_options)
         text = result["text"].strip()
         
         if text:

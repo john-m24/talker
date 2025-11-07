@@ -1,7 +1,7 @@
 """Base classes and interfaces for STT engines."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Callable
 
 
 class STTEngine(ABC):
@@ -20,4 +20,19 @@ class STTEngine(ABC):
             Transcribed text as a string
         """
         pass
+    
+    def transcribe_while_held(self, is_held: Callable[[], bool], context: Optional[str] = None) -> str:
+        """
+        Record audio while a condition is true (e.g., while hotkey is held).
+        
+        Args:
+            is_held: Callable that returns True while recording should continue
+            context: Optional context text to help with transcription accuracy
+        
+        Returns:
+            Transcribed text as a string
+        """
+        # Default implementation: use regular transcribe
+        # Subclasses can override for better push-to-talk support
+        return self.transcribe()
 

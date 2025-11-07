@@ -1,6 +1,6 @@
 """Factory for creating STT engines based on configuration."""
 
-from typing import Optional
+from typing import Optional, Callable
 from .base import STTEngine
 from ..config import STT_ENGINE
 
@@ -46,4 +46,19 @@ def transcribe_once(timeout: Optional[float] = None, phrase_time_limit: Optional
     """
     engine = create_stt_engine()
     return engine.transcribe(timeout=timeout, phrase_time_limit=phrase_time_limit)
+
+
+def transcribe_while_held(is_held, context: Optional[str] = None) -> str:
+    """
+    Record audio while a condition is true (e.g., while hotkey is held).
+    
+    Args:
+        is_held: Callable that returns True while recording should continue
+        context: Optional context text to help with transcription accuracy
+    
+    Returns:
+        Transcribed text as a string
+    """
+    engine = create_stt_engine()
+    return engine.transcribe_while_held(is_held, context=context)
 

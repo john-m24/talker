@@ -6,4 +6,5 @@ numpy
 SpeechRecognition
 pyaudio
 pocketsphinx
+pynput>=1.7.6
 
