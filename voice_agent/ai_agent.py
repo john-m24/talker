@@ -32,9 +32,9 @@ class AIAgent:
         running_apps: List[str], 
         installed_apps: Optional[List[str]] = None,
         chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Union[List[Dict], bool, Optional[str]]]:
         """
-        Parse user command text into a structured intent.
+        Parse user command text into structured intents (supports single or multiple commands).
         
         Args:
             text: User's command text
@@ -43,11 +43,10 @@ class AIAgent:
             chrome_tabs: Optional list of Chrome tabs with 'index' and 'title' keys
             
         Returns:
-            Dictionary with 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index', 
-            'needs_clarification', and 'clarification_reason' keys
-            Example: {"type": "focus_app", "app_name": "Docker Desktop", "needs_clarification": false, "clarification_reason": null}
-            Example: {"type": "place_app", "app_name": "Google Chrome", "monitor": "right", "maximize": false, "needs_clarification": false, "clarification_reason": null}
-            Example: {"type": "switch_tab", "tab_title": "Gmail", "needs_clarification": false, "clarification_reason": null}
+            Dictionary with 'commands' array (list of intent dicts), 'needs_clarification', and 'clarification_reason'
+            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index'
+            Example (single command): {"commands": [{"type": "focus_app", "app_name": "Docker Desktop"}], "needs_clarification": false, "clarification_reason": null}
+            Example (multiple commands): {"commands": [{"type": "place_app", "app_name": "Google Chrome", "monitor": "left"}, {"type": "place_app", "app_name": "Cursor", "monitor": "right"}], "needs_clarification": false, "clarification_reason": null}
         """
         # Build context for the AI
         context_parts = [
@@ -85,21 +84,32 @@ class AIAgent:
             "User command:",
             text,
             "",
+            "IMPORTANT: The user may give multiple commands in a single utterance.",
+            "Look for conjunctions like 'and', 'then', 'also' that indicate multiple commands.",
+            "Examples of multiple commands:",
+            "- 'Open google on the left and cursor on the right' -> two place_app commands",
+            "- 'Focus chrome and list tabs' -> focus_app and list_tabs commands",
+            "- 'Put X on left and Y on right' -> two place_app commands",
+            "",
             "Return a JSON object with:",
+            "- 'commands': an array of intent objects (even if there's only one command)",
+            "- 'needs_clarification': (boolean) true if any command is ambiguous, missing information, or unclear; false otherwise",
+            "- 'clarification_reason': (string, optional) brief explanation of why clarification is needed, or null if not needed",
+            "",
+            "Each intent object in the 'commands' array should have:",
             "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', or 'list_tabs'",
             "- 'app_name': (for focus_app and place_app) the exact application name from the running apps list",
             "- 'monitor': (for place_app) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
             "- 'maximize': (for place_app, optional boolean) true if user wants to maximize the window, false otherwise",
             "- 'tab_title': (for switch_tab) match keywords from the user's command to the Chrome tab titles",
             "- 'tab_index': (for switch_tab, optional) the tab number if user specifies a number",
-            "- 'needs_clarification': (boolean) true if the command is ambiguous, missing information, or unclear; false otherwise",
-            "- 'clarification_reason': (string, optional) brief explanation of why clarification is needed, or null if not needed",
             "",
             "Monitor placement patterns to recognize:",
             "- 'put X on [right/left/main] monitor' -> type: 'place_app', monitor: 'right'/'left'/'main'",
             "- 'move X to [main/right/left] screen/display' -> type: 'place_app', monitor: 'main'/'right'/'left'",
             "- 'place X on [monitor] and maximize' -> type: 'place_app', monitor: [monitor], maximize: true",
             "- 'show X on [monitor]' -> type: 'place_app', monitor: [monitor]",
+            "- 'open X on [monitor]' -> type: 'place_app', monitor: [monitor]",
             "",
             "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
             "If no matching app is found in running apps, use the closest match from installed apps.",
@@ -109,15 +119,21 @@ class AIAgent:
             "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
             "If the command is unclear, default to 'list_apps'.",
             "",
+            "When parsing multiple commands:",
+            "- Split on conjunctions: 'and', 'then', 'also', 'plus'",
+            "- Each command should be parsed independently",
+            "- Maintain the order of commands as spoken",
+            "- If one command is unclear, still parse the others if possible",
+            "",
             "Clarification assessment:",
             "Set 'needs_clarification' to true if:",
-            "- The command is ambiguous (multiple possible interpretations)",
-            "- Required information is missing (e.g., app name not found in running apps, monitor not specified for place_app)",
-            "- The command doesn't make sense in context",
-            "- The intent is unclear or vague",
+            "- Any command is ambiguous (multiple possible interpretations)",
+            "- Required information is missing for any command (e.g., app name not found in running apps, monitor not specified for place_app)",
+            "- Any command doesn't make sense in context",
+            "- The intent is unclear or vague for any command",
             "Examples: 'bring it to view' when multiple apps are running, 'focus' without app name, 'do the thing', etc.",
-            "If the command is clear and all required information is present, set 'needs_clarification' to false.",
-            "When clarification is needed, still return your best guess for the intent, but flag it for clarification.",
+            "If all commands are clear and all required information is present, set 'needs_clarification' to false.",
+            "When clarification is needed, still return your best guess for the intents, but flag it for clarification.",
         ])
         
         prompt = "\n".join(context_parts)
@@ -181,32 +197,51 @@ class AIAgent:
             
             # Parse JSON
             try:
-                intent = json.loads(content)
+                result = json.loads(content)
                 
-                # Debug: Print the parsed intent
+                # Debug: Print the parsed result
                 print("DEBUG: Parsed intent:")
-                print(json.dumps(intent, indent=2))
+                print(json.dumps(result, indent=2))
                 print()
                 
-                # Validate structure
-                if "type" not in intent:
-                    return {"type": "list_apps", "needs_clarification": False, "clarification_reason": None}
+                # Normalize to new structure with 'commands' array
+                # Handle backward compatibility: if old format (has 'type' at top level), convert to new format
+                if "commands" in result:
+                    # New format with commands array
+                    commands = result.get("commands", [])
+                    if not isinstance(commands, list):
+                        commands = [commands] if commands else []
+                elif "type" in result:
+                    # Old format - single command, convert to new format
+                    commands = [result]
+                    result = {"commands": commands}
+                else:
+                    # Invalid structure, default to list_apps
+                    commands = [{"type": "list_apps"}]
+                    result = {"commands": commands}
                 
                 # Ensure needs_clarification and clarification_reason fields exist
-                if "needs_clarification" not in intent:
-                    intent["needs_clarification"] = False
-                if "clarification_reason" not in intent:
-                    intent["clarification_reason"] = None
+                if "needs_clarification" not in result:
+                    result["needs_clarification"] = False
+                if "clarification_reason" not in result:
+                    result["clarification_reason"] = None
                 
-                return intent
+                # Ensure each command has required fields
+                for cmd in commands:
+                    if "type" not in cmd:
+                        cmd["type"] = "list_apps"
+                
+                result["commands"] = commands
+                
+                return result
             except json.JSONDecodeError as e:
                 print(f"Error parsing AI response as JSON: {e}")
                 print(f"Response was: {content}")
-                return {"type": "list_apps", "needs_clarification": False, "clarification_reason": None}
+                return {"commands": [{"type": "list_apps"}], "needs_clarification": False, "clarification_reason": None}
                 
         except Exception as e:
             print(f"Error calling AI agent: {e}")
             import traceback
             traceback.print_exc()
-            return {"type": "list_apps", "needs_clarification": False, "clarification_reason": None}
+            return {"commands": [{"type": "list_apps"}], "needs_clarification": False, "clarification_reason": None}
 

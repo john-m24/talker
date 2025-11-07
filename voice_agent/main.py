@@ -65,7 +65,7 @@ def handle_clarification(
     
     Args:
         text: Original transcribed text
-        intent: Parsed intent dictionary
+        intent: Parsed intent dictionary (with 'commands' array for multiple commands)
         agent: AI agent instance
         running_apps: List of running apps
         installed_apps: List of installed apps
@@ -79,7 +79,11 @@ def handle_clarification(
         return text, intent
     
     clarification_reason = intent.get("clarification_reason")
+    commands_count = len(intent.get("commands", []))
+    
     print("⚠️  Command needs clarification...")
+    if commands_count > 1:
+        print(f"   Detected {commands_count} commands")
     if clarification_reason:
         print(f"   Reason: {clarification_reason}")
     
@@ -207,24 +211,30 @@ def main():
             
             # Parse intent using AI agent
             print(f"\n📝 Processing: '{text}'...")
-            intent = time_operation(
+            intent_result = time_operation(
                 "LLM (Intent Parsing)",
                 agent.parse_intent,
                 text, running_apps, installed_apps, chrome_tabs=chrome_tabs
             )
             
             # Handle clarification if needed
-            text, intent = handle_clarification(
-                text, intent, agent, running_apps, installed_apps, chrome_tabs
+            text, intent_result = handle_clarification(
+                text, intent_result, agent, running_apps, installed_apps, chrome_tabs
             )
             
-            if text is None or intent is None:
+            if text is None or intent_result is None:
                 # User cancelled clarification
                 print(f"👂 Waiting for hotkey ({HOTKEY})...\n")
                 continue
             
-            # Execute command using command executor
-            command_executor.execute(intent, running_apps=running_apps, chrome_tabs=chrome_tabs)
+            # Show feedback for multiple commands
+            commands_list = intent_result.get("commands", [])
+            if len(commands_list) > 1:
+                print(f"✓ Detected {len(commands_list)} commands\n")
+            
+            # Execute command(s) using command executor
+            # The executor accepts the new format with 'commands' array
+            command_executor.execute(intent_result, running_apps=running_apps, chrome_tabs=chrome_tabs)
             print(f"\n👂 Waiting for hotkey ({HOTKEY})...\n")
                 
         except KeyboardInterrupt:
