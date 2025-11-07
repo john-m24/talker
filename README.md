@@ -24,18 +24,21 @@ A Python-based voice window agent that allows you to control macOS application w
 pip install -r requirements.txt
 ```
 
+**Note**: Whisper requires Python 3.13 or earlier (Python 3.14 has numba compatibility issues). If using Python 3.14, the agent will automatically fall back to Sphinx.
+
 This installs:
 - `openai` - For LLM API client
-- `SpeechRecognition` - For speech-to-text library
-- `pyaudio` - For microphone access
-- `pocketsphinx` - For offline speech recognition (no API key needed)
+- `openai-whisper` - For high-quality speech-to-text (default, recommended)
+- `sounddevice` - For microphone access (used by Whisper)
+- `numpy` - For audio processing
+- `SpeechRecognition` - For Sphinx speech recognition (fallback)
+- `pyaudio` - For microphone access (used by Sphinx)
+- `pocketsphinx` - For offline speech recognition (fallback)
 
-**Note**: On macOS, you may need to install PortAudio for pyaudio:
+**macOS Note**: You may need to install PortAudio:
 ```bash
 brew install portaudio
 ```
-
-The agent uses offline speech recognition (Sphinx) which doesn't require any API keys or internet connection.
 
 3. Ensure your local LLM server is running and accessible at the configured endpoint (default: `http://192.168.1.198:10000/v1`)
 
@@ -44,7 +47,9 @@ The agent uses offline speech recognition (Sphinx) which doesn't require any API
 The agent can be configured via environment variables:
 
 - `VOICE_AGENT_LLM_ENDPOINT`: URL of your local LLM endpoint (default: `http://192.168.1.198:10000/v1`)
-- `VOICE_AGENT_LLM_MODEL`: Model name to use (default: `local`)
+- `VOICE_AGENT_LLM_MODEL`: Model name to use (default: `qwen-30b`)
+- `VOICE_AGENT_STT_ENGINE`: Speech-to-text engine - `whisper` (default) or `sphinx`
+- `VOICE_AGENT_WHISPER_MODEL`: Whisper model size - `tiny`, `base` (default), `small`, `medium`, `large`
 
 Example:
 ```bash
@@ -68,12 +73,14 @@ python3 -m voice_agent.main
 
 The agent will:
 1. Listen to your voice command via microphone
-2. Transcribe your speech using offline speech recognition (Sphinx - no API key needed)
+2. Transcribe your speech using Whisper (default) or Sphinx (fallback)
 3. Get context about running and installed apps
 4. Use AI to parse your intent and extract the exact app name
 5. Execute the appropriate AppleScript command
 
 **Note**: Uses offline speech recognition - no API keys, no internet connection, and no cloud services required!
+
+**First run with Whisper**: The first time you run with Whisper, it will download the model (~150MB for base model). This only happens once.
 
 ## Project Structure
 
@@ -81,7 +88,7 @@ The agent will:
 voice_agent/
   __init__.py          # Package initialization
   main.py              # Entry point with main loop
-  stt.py               # Speech-to-text abstraction (currently text input)
+  stt.py               # Speech-to-text abstraction (Whisper/Sphinx)
   ai_agent.py          # AI client for intent parsing
   window_control.py    # AppleScript helpers for window control
   config.py            # Configuration (LLM endpoint, etc.)
@@ -93,7 +100,8 @@ On macOS, you'll need to grant microphone permissions to Terminal (or your Pytho
 1. System Preferences > Security & Privacy > Privacy > Microphone
 2. Enable Terminal (or your IDE/terminal app)
 
-The agent will automatically detect when you start and stop speaking.
+**Whisper**: Speak your command, then press Enter when done.
+**Sphinx**: The agent will automatically detect when you start and stop speaking.
 
 ## How It Works
 

@@ -4,7 +4,7 @@ import sys
 from .stt import transcribe_once
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps, activate_app
-from .config import LLM_ENDPOINT
+from .config import LLM_ENDPOINT, STT_ENGINE
 
 
 def print_help():
@@ -17,8 +17,12 @@ def print_help():
     print("  - 'List apps' / 'What's running'")
     print("  - 'quit' or 'exit' to stop")
     print(f"\nUsing LLM endpoint: {LLM_ENDPOINT}")
+    print(f"Using STT engine: {STT_ENGINE.upper()}")
     print("=" * 60)
-    print("\nSpeak your command, then press Enter when done.\n")
+    if STT_ENGINE.lower() == "whisper":
+        print("\nSpeak your command, then press Enter when done.\n")
+    else:
+        print("\nSpeak your command (will auto-detect start/stop).\n")
 
 
 def main():

@@ -1,4 +1,7 @@
 openai>=1.0.0
+openai-whisper
+sounddevice
+numpy
 SpeechRecognition
 pyaudio
 pocketsphinx
