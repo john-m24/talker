@@ -29,6 +29,17 @@ def _get_whisper_model(model_name: str = "base"):
     return _whisper_model
 
 
+def preload_whisper_model(model_name: str = "base"):
+    """
+    Pre-load the Whisper model at startup to reduce delay when hotkey is pressed.
+    
+    Args:
+        model_name: Name of the Whisper model to preload (default: "base")
+    """
+    _get_whisper_model(model_name)
+    print(f"✅ Whisper model '{model_name}' pre-loaded and ready!")
+
+
 class WhisperSTTEngine(STTEngine):
     """Whisper speech-to-text engine."""
     

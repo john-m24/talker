@@ -9,7 +9,7 @@ from .window_control import list_running_apps, list_installed_apps
 from .tab_control import list_chrome_tabs
 from .clarification import show_clarification_dialog
 from .commands import CommandExecutor
-from .config import LLM_ENDPOINT, STT_ENGINE, HOTKEY
+from .config import LLM_ENDPOINT, STT_ENGINE, HOTKEY, WHISPER_MODEL
 from .hotkey import HotkeyListener
 
 
@@ -110,6 +110,17 @@ def handle_clarification(
 def main():
     """Main loop for the voice agent."""
     print_help()
+    
+    # Pre-load Whisper model if using Whisper engine (reduces delay on hotkey press)
+    if STT_ENGINE.lower() == "whisper":
+        try:
+            from .stt.engines.whisper_engine import preload_whisper_model
+            print("🔄 Pre-loading Whisper model...")
+            preload_whisper_model(WHISPER_MODEL)
+            print()
+        except Exception as e:
+            print(f"⚠️  Warning: Could not pre-load Whisper model: {e}")
+            print("   Model will be loaded on first use.\n")
     
     # Initialize AI agent
     try:
