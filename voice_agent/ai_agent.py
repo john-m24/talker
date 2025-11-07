@@ -2,7 +2,7 @@
 
 import json
 import openai
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from .config import LLM_ENDPOINT, LLM_MODEL
 
 
@@ -30,7 +30,8 @@ class AIAgent:
         self, 
         text: str, 
         running_apps: List[str], 
-        installed_apps: Optional[List[str]] = None
+        installed_apps: Optional[List[str]] = None,
+        chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None
     ) -> Dict[str, str]:
         """
         Parse user command text into a structured intent.
@@ -39,10 +40,12 @@ class AIAgent:
             text: User's command text
             running_apps: List of currently running applications
             installed_apps: Optional list of installed applications
+            chrome_tabs: Optional list of Chrome tabs with 'index' and 'title' keys
             
         Returns:
-            Dictionary with 'type' and optionally 'app_name' keys
+            Dictionary with 'type' and optionally 'app_name', 'tab_title', or 'tab_index' keys
             Example: {"type": "focus_app", "app_name": "Docker Desktop"}
+            Example: {"type": "switch_tab", "tab_title": "Gmail"}
         """
         # Build context for the AI
         context_parts = [
@@ -51,9 +54,21 @@ class AIAgent:
             "Available commands:",
             "- 'list_apps' or 'list applications' - list running applications",
             "- 'focus_app' - bring an application to the front",
+            "- 'switch_tab' - switch to a specific Chrome tab",
+            "- 'list_tabs' - list all open Chrome tabs",
             "",
             f"Currently running applications: {', '.join(running_apps) if running_apps else 'None'}",
         ]
+        
+        # Add Chrome tabs context if available
+        if chrome_tabs:
+            tabs_info = []
+            for tab in chrome_tabs[:20]:  # Limit to 20 tabs to avoid token limits
+                tabs_info.append(f"Tab {tab['index']}: {tab['title']}")
+            if tabs_info:
+                context_parts.append(
+                    f"Open Chrome tabs: {'; '.join(tabs_info)}"
+                )
         
         if installed_apps:
             # Limit to first 50 apps to avoid token limits
@@ -68,11 +83,16 @@ class AIAgent:
             text,
             "",
             "Return a JSON object with:",
-            "- 'type': either 'list_apps' or 'focus_app'",
-            "- 'app_name': (only for focus_app) the exact application name from the running apps list",
+            "- 'type': either 'list_apps', 'focus_app', 'switch_tab', or 'list_tabs'",
+            "- 'app_name': (for focus_app) the exact application name from the running apps list",
+            "- 'tab_title': (for switch_tab) match keywords from the user's command to the Chrome tab titles",
+            "- 'tab_index': (for switch_tab, optional) the tab number if user specifies a number",
             "",
             "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
             "If no matching app is found in running apps, use the closest match from installed apps.",
+            "If the user wants to switch tabs, match keywords from their command to the Chrome tab titles.",
+            "For example: 'Gmail' matches 'Gmail - Inbox', 'YouTube' matches 'YouTube - Watch', etc.",
+            "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
             "If the command is unclear, default to 'list_apps'.",
         ])
         

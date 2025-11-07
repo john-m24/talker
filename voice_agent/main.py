@@ -5,6 +5,7 @@ import time
 from .stt import transcribe_once
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps, activate_app
+from .tab_control import list_chrome_tabs, switch_to_chrome_tab
 from .config import LLM_ENDPOINT, STT_ENGINE
 
 
@@ -16,6 +17,7 @@ def print_help():
     print("\n🎤 Voice Commands:")
     print("  - 'Bring [App] to view' / 'Focus [App]' / 'Show [App]'")
     print("  - 'List apps' / 'What's running'")
+    print("  - 'Switch to [Tab]' / 'Go to tab [Number]' / 'List tabs'")
     print("  - 'quit' or 'exit' to stop")
     print(f"\nUsing LLM endpoint: {LLM_ENDPOINT}")
     print(f"Using STT engine: {STT_ENGINE.upper()}")
@@ -62,10 +64,15 @@ def main():
             apps_time = time.time() - start_apps
             print(f"⏱️  List apps took: {apps_time:.2f}s")
             
+            # Get Chrome tabs if Chrome is running (for tab switching context)
+            chrome_tabs = None
+            if "Google Chrome" in running_apps:
+                chrome_tabs = list_chrome_tabs()
+            
             # Parse intent using AI agent
             print(f"\n📝 Processing: '{text}'...")
             start_llm = time.time()
-            intent = agent.parse_intent(text, running_apps, installed_apps)
+            intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs)
             llm_time = time.time() - start_llm
             print(f"⏱️  LLM (Intent Parsing) took: {llm_time:.2f}s")
             print(f"⏱️  Total processing time: {stt_time + apps_time + llm_time:.2f}s\n")
@@ -82,6 +89,15 @@ def main():
                     print("  (No applications running)")
                 print()
             
+            elif intent_type == "list_tabs":
+                print("\nOpen Chrome tabs:")
+                if chrome_tabs:
+                    for tab in chrome_tabs:
+                        print(f"  {tab['index']}. {tab['title']}")
+                else:
+                    print("  Chrome is not running or has no tabs")
+                print()
+            
             elif intent_type == "focus_app":
                 app_name = intent.get("app_name")
                 if app_name:
@@ -93,6 +109,25 @@ def main():
                         print(f"✗ Failed to activate '{app_name}'\n")
                 else:
                     print("Error: No app name specified in intent\n")
+            
+            elif intent_type == "switch_tab":
+                tab_title = intent.get("tab_title")
+                tab_index = intent.get("tab_index")
+                
+                if tab_index:
+                    print(f"Switching to Chrome tab #{tab_index}...")
+                    success = switch_to_chrome_tab(tab_index=tab_index)
+                elif tab_title:
+                    print(f"Switching to Chrome tab matching '{tab_title}'...")
+                    success = switch_to_chrome_tab(tab_title=tab_title)
+                else:
+                    print("Error: No tab specified")
+                    success = False
+                
+                if success:
+                    print(f"✓ Successfully switched tab\n")
+                else:
+                    print(f"✗ Failed to switch tab\n")
             
             else:
                 print(f"Unknown intent type: {intent_type}\n")
