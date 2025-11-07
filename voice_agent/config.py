@@ -36,4 +36,4 @@ STT_ENGINE = _default_stt
 # Whisper model size: "tiny", "base", "small", "medium", "large"
 WHISPER_MODEL = os.getenv("VOICE_AGENT_WHISPER_MODEL", "tiny")
 # Silence duration threshold for automatic speech end detection (in seconds)
-SILENCE_DURATION = float(os.getenv("VOICE_AGENT_SILENCE_DURATION", "1.5"))
+SILENCE_DURATION = float(os.getenv("VOICE_AGENT_SILENCE_DURATION", "0.5"))

@@ -177,7 +177,7 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
     audio_queue = []
     recording = threading.Event()
     recording.set()
-    chunk_duration = 0.1  # Process chunks every 100ms
+    chunk_duration = 0.05  # Process chunks every 50ms
     
     def audio_callback(indata, frames, time_info, status):
         """Callback for audio recording."""
@@ -217,7 +217,7 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
                 print("   Speech detected, listening...")
                 break
         
-        time.sleep(0.05)  # Small delay to avoid busy waiting
+        time.sleep(0.02)  # Small delay to avoid busy waiting
     
     # Stage 2: Record while speaking, detect end
     silence_start_time = None
@@ -229,7 +229,7 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
         
         # Check if we have minimum recording duration
         if (current_time - speech_start_time) < min_recording_duration:
-            time.sleep(0.05)
+            time.sleep(0.02)
             continue
         
         # Check audio queue for silence
@@ -245,7 +245,7 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
             if speech_ended:
                 break
         
-        time.sleep(0.05)
+        time.sleep(0.02)
     
     # Stop recording
     recording.clear()
@@ -343,7 +343,7 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
                     NSDefaultRunLoopMode,
                     ns_date
                 )
-                time.sleep(0.05)
+                time.sleep(0.02)
             
             # Clean up
             os.unlink(tmp_path)
@@ -399,7 +399,7 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
     audio_queue = queue.Queue()
     recording = threading.Event()
     recording.set()
-    chunk_duration = 0.1  # Process chunks every 100ms
+    chunk_duration = 0.05  # Process chunks every 50ms
     
     def audio_callback(indata, frames, time_info, status):
         """Callback for audio recording."""
@@ -446,7 +446,7 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
                 print("   Speech detected, listening...")
                 break
         
-        time.sleep(0.05)  # Small delay to avoid busy waiting
+        time.sleep(0.02)  # Small delay to avoid busy waiting
     
     # Stage 2: Record while speaking, detect end
     silence_start_time = None
@@ -463,7 +463,7 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
         
         # Check if we have minimum recording duration
         if (current_time - speech_start_time) < min_recording_duration:
-            time.sleep(0.05)
+            time.sleep(0.02)
             continue
         
         # Check latest chunk for silence
@@ -478,7 +478,7 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
             if speech_ended:
                 break
         
-        time.sleep(0.05)
+        time.sleep(0.02)
     
     # Stop recording
     recording.clear()
