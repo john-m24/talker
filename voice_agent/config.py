@@ -18,9 +18,9 @@ class Config:
         # Default to Whisper for better accuracy and cross-platform support
         default_stt = os.getenv("VOICE_AGENT_STT_ENGINE", None)
         if default_stt is None:
-            # Try Whisper first (best accuracy, cross-platform)
+            # Try MLX Whisper first (best accuracy, GPU acceleration on Apple Silicon)
             try:
-                import whisper
+                import mlx_whisper
                 default_stt = "whisper"
             except ImportError:
                 # Fallback to macOS native on macOS if Whisper not available

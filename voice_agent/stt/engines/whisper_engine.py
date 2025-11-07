@@ -11,22 +11,46 @@ from ..base import STTEngine
 from ..audio import detect_speech_start, detect_speech_end
 from ..config import WHISPER_MODEL, SILENCE_DURATION
 
-# Whisper model cache
-_whisper_model = None
+# Import DecodingOptions for MLX Whisper (lazy import to avoid errors if not installed)
+try:
+    from mlx_whisper.decoding import DecodingOptions
+except ImportError:
+    DecodingOptions = None
+
+# MLX Whisper model path cache
+_mlx_whisper_imported = False
+_mlx_whisper_module = None
 
 
-def _get_whisper_model(model_name: str = "base"):
-    """Get or load the Whisper model."""
-    global _whisper_model
-    if _whisper_model is None:
+def _get_mlx_whisper():
+    """Get the mlx_whisper module, importing it if needed."""
+    global _mlx_whisper_imported, _mlx_whisper_module
+    if not _mlx_whisper_imported:
         try:
-            import whisper
-            print(f"Loading Whisper model '{model_name}' (first time only, this may take a moment)...")
-            _whisper_model = whisper.load_model(model_name)
-            print("Whisper model loaded!")
+            import mlx_whisper
+            _mlx_whisper_module = mlx_whisper
+            _mlx_whisper_imported = True
         except ImportError:
-            raise ImportError("openai-whisper not installed. Install with: pip install openai-whisper")
-    return _whisper_model
+            raise ImportError("mlx-whisper not installed. Install with: pip install mlx-whisper")
+    if DecodingOptions is None:
+        raise ImportError("mlx-whisper.decoding.DecodingOptions not available. Ensure mlx-whisper is properly installed.")
+    return _mlx_whisper_module
+
+
+def _get_mlx_model_path(model_name: str = "base") -> str:
+    """Convert model name to MLX model path."""
+    # Map standard Whisper model names to MLX model paths
+    model_map = {
+        "tiny": "mlx-community/whisper-tiny",
+        "base": "mlx-community/whisper-base",
+        "small": "mlx-community/whisper-small",
+        "medium": "mlx-community/whisper-medium",
+        "large": "mlx-community/whisper-large",
+        "large-v2": "mlx-community/whisper-large-v2",
+        "large-v3": "mlx-community/whisper-large-v3",
+    }
+    # Return mapped path or use model_name directly if it's already a path
+    return model_map.get(model_name, f"mlx-community/whisper-{model_name}")
 
 
 def preload_whisper_model(model_name: str = "base"):
@@ -36,8 +60,10 @@ def preload_whisper_model(model_name: str = "base"):
     Args:
         model_name: Name of the Whisper model to preload (default: "base")
     """
-    _get_whisper_model(model_name)
-    print(f"✅ Whisper model '{model_name}' pre-loaded and ready!")
+    # Just verify mlx-whisper is available and print confirmation
+    _get_mlx_whisper()
+    model_path = _get_mlx_model_path(model_name)
+    print(f"✅ MLX Whisper ready (model: '{model_name}' -> '{model_path}')")
 
 
 class WhisperSTTEngine(STTEngine):
@@ -94,7 +120,8 @@ class WhisperSTTEngine(STTEngine):
     
     def transcribe(self, timeout: Optional[float] = None, phrase_time_limit: Optional[float] = None) -> str:
         """Transcribe using Whisper."""
-        model = _get_whisper_model(WHISPER_MODEL)
+        mlx_whisper = _get_mlx_whisper()
+        model_path = _get_mlx_model_path(WHISPER_MODEL)
         
         print("\n🎤 Listening... (speak now)")
         
@@ -197,11 +224,15 @@ class WhisperSTTEngine(STTEngine):
         # Flatten to 1D array if needed (Whisper expects 1D array)
         if audio.ndim > 1:
             audio = audio.flatten()
-        print("   Processing with Whisper...")
+        print("   Processing with Whisper (MLX GPU acceleration)...")
         
-        # Transcribe with Whisper
-        transcribe_options = {"language": "en"}
-        result = model.transcribe(audio, **transcribe_options)
+        # Transcribe with MLX Whisper
+        decode_options = DecodingOptions(language="en")
+        result = mlx_whisper.transcribe(
+            audio,
+            path_or_hf_repo=model_path,
+            **decode_options.__dict__
+        )
         text = result["text"].strip()
         
         if text:
@@ -222,7 +253,8 @@ class WhisperSTTEngine(STTEngine):
         Returns:
             Transcribed text as a string
         """
-        model = _get_whisper_model(WHISPER_MODEL)
+        mlx_whisper = _get_mlx_whisper()
+        model_path = _get_mlx_model_path(WHISPER_MODEL)
         
         print("\n🎤 Listening... (hold hotkey to speak)")
         
@@ -274,18 +306,22 @@ class WhisperSTTEngine(STTEngine):
         # Flatten to 1D array if needed (Whisper expects 1D array)
         if audio.ndim > 1:
             audio = audio.flatten()
-        print("   Processing with Whisper...")
+        print("   Processing with Whisper (MLX GPU acceleration)...")
         
-        # Transcribe with Whisper
-        transcribe_options = {"language": "en"}
+        # Transcribe with MLX Whisper
+        decode_options = DecodingOptions(language="en")
+        transcribe_kwargs = {
+            "path_or_hf_repo": model_path,
+            **decode_options.__dict__
+        }
         if context:
             # Limit context to ~224 tokens (Whisper's effective limit)
             # Roughly 1 token = 4 characters, so ~900 characters max
             if len(context) > 900:
                 context = context[:900]
-            transcribe_options["initial_prompt"] = context
+            transcribe_kwargs["initial_prompt"] = context
         
-        result = model.transcribe(audio, **transcribe_options)
+        result = mlx_whisper.transcribe(audio, **transcribe_kwargs)
         text = result["text"].strip()
         
         if text:
