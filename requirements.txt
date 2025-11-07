@@ -1,4 +1,5 @@
 openai>=1.0.0
+openai-whisper
 pyobjc
 sounddevice
 numpy

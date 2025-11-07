@@ -515,6 +515,9 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
         return ""
     
     audio = np.concatenate(audio_chunks, axis=0)
+    # Flatten to 1D array if needed (Whisper expects 1D array)
+    if audio.ndim > 1:
+        audio = audio.flatten()
     print("   Processing with Whisper...")
     
     # Transcribe with Whisper
