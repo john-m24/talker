@@ -27,6 +27,8 @@ _sphinx_microphone = None
 
 # macOS Speech Recognition delegate class (defined once at module level)
 _macos_recognition_delegate_class = None
+# Keep references to delegates to prevent garbage collection
+_macos_delegate_refs = []
 
 def _get_macos_recognition_delegate_class():
     """Get or create the macOS recognition delegate class."""
@@ -54,7 +56,10 @@ def _get_macos_recognition_delegate_class():
                 def speechRecognitionTask_didFinishSuccessfully_(self, task, finished):
                     if not finished:
                         self.result_container['error'] = "Recognition did not finish successfully"
-                        self.result_container['done'] = True
+                    self.result_container['done'] = True
+                
+                # Note: wasCancelled method removed - causing signature issues with PyObjC
+                # Cancellation is handled via timeout in the main loop
                 
                 def speechRecognitionTask_didHypothesizeTranscription_(self, task, transcription):
                     # Optional: handle partial results
@@ -178,6 +183,12 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
                 raise ImportError("PyObjC not available")
             
             delegate = DelegateClass.alloc().initWithResultContainer_(result_container)
+            # Keep reference to prevent garbage collection
+            _macos_delegate_refs.append(delegate)
+            # Clean up old references (keep last 5)
+            if len(_macos_delegate_refs) > 5:
+                _macos_delegate_refs.pop(0)
+            
             task = recognizer.recognitionTaskWithRequest_delegate_(request, delegate)
             
             # Wait for recognition to complete
@@ -185,12 +196,26 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
             from Foundation import NSDate
             
             start_time = time.time()
-            timeout_seconds = timeout if timeout else 10.0
+            timeout_seconds = timeout if timeout else 15.0  # Increased timeout
+            max_iterations = int(timeout_seconds * 20)  # Safety limit
+            iteration = 0
             
             while not result_container['done']:
-                if (time.time() - start_time) > timeout_seconds:
+                iteration += 1
+                elapsed = time.time() - start_time
+                
+                if elapsed > timeout_seconds:
                     task.cancel()
+                    result_container['done'] = True
+                    result_container['error'] = f"Recognition timeout after {timeout_seconds:.1f}s"
                     break
+                
+                if iteration > max_iterations:
+                    task.cancel()
+                    result_container['done'] = True
+                    result_container['error'] = "Recognition loop exceeded max iterations"
+                    break
+                
                 # Process run loop events - convert Python time to NSDate
                 future_time = time.time() + 0.1
                 ns_date = NSDate.dateWithTimeIntervalSince1970_(future_time)
