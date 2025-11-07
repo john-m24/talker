@@ -2,29 +2,7 @@
 
 import subprocess
 from typing import Optional
-
-
-def _escape_applescript_string(text: str) -> str:
-    """
-    Escape special characters for AppleScript string literals.
-    
-    Args:
-        text: String to escape
-        
-    Returns:
-        Escaped string safe for use in AppleScript
-    """
-    # Escape backslashes first (must be first)
-    text = text.replace("\\", "\\\\")
-    # Escape double quotes
-    text = text.replace('"', '\\"')
-    # Escape newlines
-    text = text.replace("\n", "\\n")
-    # Escape carriage returns
-    text = text.replace("\r", "\\r")
-    # Escape tabs
-    text = text.replace("\t", "\\t")
-    return text
+from .utils import escape_applescript_string
 
 
 def show_clarification_dialog(transcribed_text: str, reason: Optional[str] = None) -> Optional[str]:
@@ -45,8 +23,8 @@ def show_clarification_dialog(transcribed_text: str, reason: Optional[str] = Non
     message += "\n\nTranscribed text:"
     
     # Escape special characters for AppleScript
-    escaped_text = _escape_applescript_string(transcribed_text)
-    escaped_message = _escape_applescript_string(message)
+    escaped_text = escape_applescript_string(transcribed_text)
+    escaped_message = escape_applescript_string(message)
     
     # Create AppleScript to show dialog with editable text field
     script = f'''

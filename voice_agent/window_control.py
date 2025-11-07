@@ -1,9 +1,9 @@
 """Window control functions using AppleScript."""
 
-import subprocess
 import os
 from typing import List, Optional
 from .config import MONITORS
+from .utils import AppleScriptExecutor, escape_applescript_string
 
 
 def list_running_apps() -> List[str]:
@@ -15,19 +15,15 @@ def list_running_apps() -> List[str]:
     """
     try:
         script = 'tell application "System Events" to get name of every process whose background only is false'
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        success, stdout, stderr = _executor.execute(script, check=True)
+        
+        if not success:
+            print(f"Error listing running apps: {stderr}")
+            return []
         
         # Parse the comma-separated list
-        apps = [app.strip() for app in result.stdout.strip().split(", ")]
+        apps = [app.strip() for app in stdout.split(", ")] if stdout else []
         return apps
-    except subprocess.CalledProcessError as e:
-        print(f"Error listing running apps: {e.stderr}")
-        return []
     except Exception as e:
         print(f"Unexpected error listing apps: {e}")
         return []
@@ -59,27 +55,8 @@ def list_installed_apps() -> List[str]:
         return []
 
 
-def _escape_applescript_string(text: str) -> str:
-    """
-    Escape special characters for AppleScript string literals.
-    
-    Args:
-        text: String to escape
-        
-    Returns:
-        Escaped string safe for use in AppleScript
-    """
-    # Escape backslashes first (must be first)
-    text = text.replace("\\", "\\\\")
-    # Escape double quotes
-    text = text.replace('"', '\\"')
-    # Escape newlines
-    text = text.replace("\n", "\\n")
-    # Escape carriage returns
-    text = text.replace("\r", "\\r")
-    # Escape tabs
-    text = text.replace("\t", "\\t")
-    return text
+# Create a module-level executor instance
+_executor = AppleScriptExecutor()
 
 
 def show_apps_list(apps: List[str]) -> bool:
@@ -101,7 +78,7 @@ def show_apps_list(apps: List[str]) -> bool:
             message = f"Currently running applications:\n\n{apps_text}"
         
         # Escape special characters for AppleScript
-        escaped_message = _escape_applescript_string(message)
+        escaped_message = escape_applescript_string(message)
         
         # Create AppleScript to show dialog pop-up
         script = f'''
@@ -112,17 +89,12 @@ def show_apps_list(apps: List[str]) -> bool:
         display dialog "{escaped_message}" buttons {{"OK"}} default button "OK" with title "Running Applications"
         '''
         
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+        success, stdout, stderr = _executor.execute(script)
         
-        if result.returncode == 0:
+        if success:
             return True
         else:
-            print(f"Error showing apps list dialog: {result.stderr}")
+            print(f"Error showing apps list dialog: {stderr}")
             return False
     except Exception as e:
         print(f"Error showing apps list dialog: {e}")
@@ -141,17 +113,12 @@ def activate_app(app_name: str) -> bool:
     """
     try:
         script = f'tell application "{app_name}" to activate'
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+        success, stdout, stderr = _executor.execute(script)
         
-        if result.returncode == 0:
+        if success:
             return True
         else:
-            print(f"Error activating app '{app_name}': {result.stderr}")
+            print(f"Error activating app '{app_name}': {stderr}")
             return False
     except Exception as e:
         print(f"Unexpected error activating app '{app_name}': {e}")
@@ -224,14 +191,12 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
             '''
             
             try:
-                size_result = subprocess.run(
-                    ["osascript", "-e", get_size_script],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
+                success, stdout, stderr = _executor.execute(get_size_script, check=True)
+                if not success or not stdout:
+                    raise Exception(f"Failed to get window size: {stderr}")
+                
                 # Parse bounds: {left, top, right, bottom}
-                bounds_str = size_result.stdout.strip().replace("{", "").replace("}", "")
+                bounds_str = stdout.replace("{", "").replace("}", "")
                 bounds_parts = [int(p.strip()) for p in bounds_str.split(",")]
                 if len(bounds_parts) == 4:
                     current_left, current_top, current_right, current_bottom = bounds_parts
@@ -290,24 +255,19 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
         print(script)
         print(f"DEBUG: Window bounds: left={left}, top={top}, right={right}, bottom={bottom}")
         
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+        success, stdout, stderr = _executor.execute(script)
         
         # Debug: Print the result
-        print(f"DEBUG: AppleScript return code: {result.returncode}")
-        if result.stdout:
-            print(f"DEBUG: AppleScript stdout: {result.stdout}")
-        if result.stderr:
-            print(f"DEBUG: AppleScript stderr: {result.stderr}")
+        print(f"DEBUG: AppleScript success: {success}")
+        if stdout:
+            print(f"DEBUG: AppleScript stdout: {stdout}")
+        if stderr:
+            print(f"DEBUG: AppleScript stderr: {stderr}")
         
-        if result.returncode == 0:
+        if success:
             return True
         else:
-            print(f"Error placing '{app_name}' on {monitor_name} monitor: {result.stderr}")
+            print(f"Error placing '{app_name}' on {monitor_name} monitor: {stderr}")
             return False
             
     except Exception as e:

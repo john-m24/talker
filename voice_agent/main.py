@@ -2,11 +2,13 @@
 
 import sys
 import time
+from typing import Optional, Tuple
 from .stt import transcribe_once
 from .ai_agent import AIAgent
-from .window_control import list_running_apps, list_installed_apps, activate_app, place_app_on_monitor, show_apps_list
-from .tab_control import list_chrome_tabs, switch_to_chrome_tab
+from .window_control import list_running_apps, list_installed_apps
+from .tab_control import list_chrome_tabs
 from .clarification import show_clarification_dialog
+from .commands import CommandExecutor
 from .config import LLM_ENDPOINT, STT_ENGINE
 
 
@@ -28,6 +30,81 @@ def print_help():
     print("\nSpeak your command (will auto-detect when you start and stop speaking).\n")
 
 
+def time_operation(operation_name: str, func, *args, **kwargs):
+    """
+    Time an operation and print the duration.
+    
+    Args:
+        operation_name: Name of the operation for display
+        func: Function to call
+        *args, **kwargs: Arguments to pass to the function
+        
+    Returns:
+        Result of the function call
+    """
+    start_time = time.time()
+    result = func(*args, **kwargs)
+    elapsed = time.time() - start_time
+    print(f"⏱️  {operation_name} took: {elapsed:.2f}s")
+    return result
+
+
+def handle_clarification(
+    text: str,
+    intent: dict,
+    agent: AIAgent,
+    running_apps: list,
+    installed_apps: list,
+    chrome_tabs: Optional[list]
+) -> Tuple[str, dict]:
+    """
+    Handle clarification dialog if needed.
+    
+    Args:
+        text: Original transcribed text
+        intent: Parsed intent dictionary
+        agent: AI agent instance
+        running_apps: List of running apps
+        installed_apps: List of installed apps
+        chrome_tabs: List of Chrome tabs
+        
+    Returns:
+        Tuple of (final_text, final_intent)
+    """
+    needs_clarification = intent.get("needs_clarification", False)
+    if not needs_clarification:
+        return text, intent
+    
+    clarification_reason = intent.get("clarification_reason")
+    print("⚠️  Command needs clarification...")
+    if clarification_reason:
+        print(f"   Reason: {clarification_reason}")
+    
+    # Show clarification dialog
+    confirmed_text = show_clarification_dialog(text, reason=clarification_reason)
+    
+    if confirmed_text is None:
+        # User cancelled
+        print("   Clarification cancelled, skipping command.\n")
+        return None, None
+    
+    if confirmed_text != text:
+        # User corrected the text, re-parse intent
+        print(f"   Corrected text: '{confirmed_text}'")
+        text = confirmed_text
+        
+        # Re-parse intent with corrected text
+        start_llm = time.time()
+        intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs)
+        llm_time = time.time() - start_llm
+        print(f"⏱️  LLM (Re-parsing) took: {llm_time:.2f}s\n")
+    else:
+        # User confirmed, proceed with original intent
+        print("   Text confirmed, proceeding with command.\n")
+    
+    return text, intent
+
+
 def main():
     """Main loop for the voice agent."""
     print_help()
@@ -44,14 +121,14 @@ def main():
     # Get installed apps once (for context)
     installed_apps = list_installed_apps()
     
+    # Initialize command executor
+    command_executor = CommandExecutor()
+    
     # Main loop
     while True:
         try:
             # Get user input
-            start_stt = time.time()
-            text = transcribe_once()
-            stt_time = time.time() - start_stt
-            print(f"⏱️  STT (Speech Recognition) took: {stt_time:.2f}s")
+            text = time_operation("STT (Speech Recognition)", transcribe_once)
             
             if not text:
                 continue
@@ -62,10 +139,7 @@ def main():
                 break
             
             # Get current running apps for context
-            start_apps = time.time()
-            running_apps = list_running_apps()
-            apps_time = time.time() - start_apps
-            print(f"⏱️  List apps took: {apps_time:.2f}s")
+            running_apps = time_operation("List apps", list_running_apps)
             
             # Get Chrome tabs if Chrome is running (for tab switching context)
             chrome_tabs = None
@@ -74,113 +148,23 @@ def main():
             
             # Parse intent using AI agent
             print(f"\n📝 Processing: '{text}'...")
-            start_llm = time.time()
-            intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs)
-            llm_time = time.time() - start_llm
-            print(f"⏱️  LLM (Intent Parsing) took: {llm_time:.2f}s")
-            print(f"⏱️  Total processing time: {stt_time + apps_time + llm_time:.2f}s\n")
+            intent = time_operation(
+                "LLM (Intent Parsing)",
+                agent.parse_intent,
+                text, running_apps, installed_apps, chrome_tabs=chrome_tabs
+            )
             
-            # Check if clarification is needed
-            needs_clarification = intent.get("needs_clarification", False)
-            if needs_clarification:
-                clarification_reason = intent.get("clarification_reason")
-                print("⚠️  Command needs clarification...")
-                if clarification_reason:
-                    print(f"   Reason: {clarification_reason}")
-                
-                # Show clarification dialog
-                confirmed_text = show_clarification_dialog(text, reason=clarification_reason)
-                
-                if confirmed_text is None:
-                    # User cancelled
-                    print("   Clarification cancelled, skipping command.\n")
-                    continue
-                
-                if confirmed_text != text:
-                    # User corrected the text, re-parse intent
-                    print(f"   Corrected text: '{confirmed_text}'")
-                    text = confirmed_text
-                    
-                    # Re-parse intent with corrected text
-                    start_llm = time.time()
-                    intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs)
-                    llm_time = time.time() - start_llm
-                    print(f"⏱️  LLM (Re-parsing) took: {llm_time:.2f}s\n")
-                else:
-                    # User confirmed, proceed with original intent
-                    print("   Text confirmed, proceeding with command.\n")
+            # Handle clarification if needed
+            text, intent = handle_clarification(
+                text, intent, agent, running_apps, installed_apps, chrome_tabs
+            )
             
-            # Execute command
-            intent_type = intent.get("type", "list_apps")
+            if text is None or intent is None:
+                # User cancelled clarification
+                continue
             
-            if intent_type == "list_apps":
-                show_apps_list(running_apps)
-                print()  # Keep a blank line for console output consistency
-            
-            elif intent_type == "list_tabs":
-                print("\nOpen Chrome tabs:")
-                if chrome_tabs:
-                    for tab in chrome_tabs:
-                        print(f"  {tab['index']}. {tab['title']}")
-                else:
-                    print("  Chrome is not running or has no tabs")
-                print()
-            
-            elif intent_type == "focus_app":
-                app_name = intent.get("app_name")
-                if app_name:
-                    print(f"Bringing '{app_name}' to front...")
-                    success = activate_app(app_name)
-                    if success:
-                        print(f"✓ Successfully activated '{app_name}'\n")
-                    else:
-                        print(f"✗ Failed to activate '{app_name}'\n")
-                else:
-                    print("Error: No app name specified in intent\n")
-            
-            elif intent_type == "place_app":
-                app_name = intent.get("app_name")
-                monitor = intent.get("monitor")
-                maximize = intent.get("maximize", False)
-                
-                if app_name and monitor:
-                    monitor_display = monitor.replace("_", " ").title()
-                    maximize_text = " and maximizing" if maximize else ""
-                    print(f"Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
-                    success = place_app_on_monitor(app_name, monitor, maximize=maximize)
-                    if success:
-                        print(f"✓ Successfully placed '{app_name}' on {monitor_display} monitor\n")
-                    else:
-                        print(f"✗ Failed to place '{app_name}' on {monitor_display} monitor\n")
-                else:
-                    missing = []
-                    if not app_name:
-                        missing.append("app name")
-                    if not monitor:
-                        missing.append("monitor")
-                    print(f"Error: Missing {', '.join(missing)} in intent\n")
-            
-            elif intent_type == "switch_tab":
-                tab_title = intent.get("tab_title")
-                tab_index = intent.get("tab_index")
-                
-                if tab_index:
-                    print(f"Switching to Chrome tab #{tab_index}...")
-                    success = switch_to_chrome_tab(tab_index=tab_index)
-                elif tab_title:
-                    print(f"Switching to Chrome tab matching '{tab_title}'...")
-                    success = switch_to_chrome_tab(tab_title=tab_title)
-                else:
-                    print("Error: No tab specified")
-                    success = False
-                
-                if success:
-                    print(f"✓ Successfully switched tab\n")
-                else:
-                    print(f"✗ Failed to switch tab\n")
-            
-            else:
-                print(f"Unknown intent type: {intent_type}\n")
+            # Execute command using command executor
+            command_executor.execute(intent, running_apps=running_apps, chrome_tabs=chrome_tabs)
                 
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")

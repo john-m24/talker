@@ -1,7 +1,10 @@
 """Tab control functions for browsers using AppleScript."""
 
-import subprocess
 from typing import List, Optional, Dict, Union
+from .utils import AppleScriptExecutor
+
+# Create a module-level executor instance
+_executor = AppleScriptExecutor()
 
 
 def list_chrome_tabs() -> List[Dict[str, Union[str, int]]]:
@@ -26,18 +29,17 @@ def list_chrome_tabs() -> List[Dict[str, Union[str, int]]]:
             return tabList
         end tell
         '''
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        success, stdout, stderr = _executor.execute(script, check=True)
+        
+        if not success:
+            print(f"Error listing Chrome tabs: {stderr}")
+            return []
         
         # Parse the result (format: {1, "Title 1"}, {2, "Title 2"}, ...)
         tabs = []
-        if result.stdout.strip():
+        if stdout:
             # Split by }, { to get individual tab entries
-            tab_entries = result.stdout.strip().split("}, {")
+            tab_entries = stdout.split("}, {")
             for entry in tab_entries:
                 entry = entry.replace("{", "").replace("}", "").strip()
                 parts = entry.split(", ", 1)
@@ -53,9 +55,6 @@ def list_chrome_tabs() -> List[Dict[str, Union[str, int]]]:
                         continue
         
         return tabs
-    except subprocess.CalledProcessError as e:
-        print(f"Error listing Chrome tabs: {e.stderr}")
-        return []
     except Exception as e:
         print(f"Unexpected error listing Chrome tabs: {e}")
         return []
@@ -101,17 +100,12 @@ def switch_to_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[in
         else:
             return False
             
-        result = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            check=False
-        )
+        success, stdout, stderr = _executor.execute(script)
         
-        if result.returncode == 0:
+        if success:
             return True
         else:
-            print(f"Error switching Chrome tab: {result.stderr}")
+            print(f"Error switching Chrome tab: {stderr}")
             return False
     except Exception as e:
         print(f"Unexpected error switching Chrome tab: {e}")
