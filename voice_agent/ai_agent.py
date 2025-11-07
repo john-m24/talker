@@ -43,10 +43,11 @@ class AIAgent:
             chrome_tabs: Optional list of Chrome tabs with 'index' and 'title' keys
             
         Returns:
-            Dictionary with 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', or 'tab_index' keys
-            Example: {"type": "focus_app", "app_name": "Docker Desktop"}
-            Example: {"type": "place_app", "app_name": "Google Chrome", "monitor": "right", "maximize": false}
-            Example: {"type": "switch_tab", "tab_title": "Gmail"}
+            Dictionary with 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index', 
+            'needs_clarification', and 'clarification_reason' keys
+            Example: {"type": "focus_app", "app_name": "Docker Desktop", "needs_clarification": false, "clarification_reason": null}
+            Example: {"type": "place_app", "app_name": "Google Chrome", "monitor": "right", "maximize": false, "needs_clarification": false, "clarification_reason": null}
+            Example: {"type": "switch_tab", "tab_title": "Gmail", "needs_clarification": false, "clarification_reason": null}
         """
         # Build context for the AI
         context_parts = [
@@ -91,6 +92,8 @@ class AIAgent:
             "- 'maximize': (for place_app, optional boolean) true if user wants to maximize the window, false otherwise",
             "- 'tab_title': (for switch_tab) match keywords from the user's command to the Chrome tab titles",
             "- 'tab_index': (for switch_tab, optional) the tab number if user specifies a number",
+            "- 'needs_clarification': (boolean) true if the command is ambiguous, missing information, or unclear; false otherwise",
+            "- 'clarification_reason': (string, optional) brief explanation of why clarification is needed, or null if not needed",
             "",
             "Monitor placement patterns to recognize:",
             "- 'put X on [right/left/main] monitor' -> type: 'place_app', monitor: 'right'/'left'/'main'",
@@ -105,6 +108,16 @@ class AIAgent:
             "For example: 'Gmail' matches 'Gmail - Inbox', 'YouTube' matches 'YouTube - Watch', etc.",
             "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
             "If the command is unclear, default to 'list_apps'.",
+            "",
+            "Clarification assessment:",
+            "Set 'needs_clarification' to true if:",
+            "- The command is ambiguous (multiple possible interpretations)",
+            "- Required information is missing (e.g., app name not found in running apps, monitor not specified for place_app)",
+            "- The command doesn't make sense in context",
+            "- The intent is unclear or vague",
+            "Examples: 'bring it to view' when multiple apps are running, 'focus' without app name, 'do the thing', etc.",
+            "If the command is clear and all required information is present, set 'needs_clarification' to false.",
+            "When clarification is needed, still return your best guess for the intent, but flag it for clarification.",
         ])
         
         prompt = "\n".join(context_parts)
@@ -177,17 +190,23 @@ class AIAgent:
                 
                 # Validate structure
                 if "type" not in intent:
-                    return {"type": "list_apps"}
+                    return {"type": "list_apps", "needs_clarification": False, "clarification_reason": None}
+                
+                # Ensure needs_clarification and clarification_reason fields exist
+                if "needs_clarification" not in intent:
+                    intent["needs_clarification"] = False
+                if "clarification_reason" not in intent:
+                    intent["clarification_reason"] = None
                 
                 return intent
             except json.JSONDecodeError as e:
                 print(f"Error parsing AI response as JSON: {e}")
                 print(f"Response was: {content}")
-                return {"type": "list_apps"}
+                return {"type": "list_apps", "needs_clarification": False, "clarification_reason": None}
                 
         except Exception as e:
             print(f"Error calling AI agent: {e}")
             import traceback
             traceback.print_exc()
-            return {"type": "list_apps"}
+            return {"type": "list_apps", "needs_clarification": False, "clarification_reason": None}
 

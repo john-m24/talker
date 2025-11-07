@@ -6,6 +6,7 @@ from .stt import transcribe_once
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps, activate_app, place_app_on_monitor
 from .tab_control import list_chrome_tabs, switch_to_chrome_tab
+from .clarification import show_clarification_dialog
 from .config import LLM_ENDPOINT, STT_ENGINE
 
 
@@ -78,6 +79,36 @@ def main():
             llm_time = time.time() - start_llm
             print(f"⏱️  LLM (Intent Parsing) took: {llm_time:.2f}s")
             print(f"⏱️  Total processing time: {stt_time + apps_time + llm_time:.2f}s\n")
+            
+            # Check if clarification is needed
+            needs_clarification = intent.get("needs_clarification", False)
+            if needs_clarification:
+                clarification_reason = intent.get("clarification_reason")
+                print("⚠️  Command needs clarification...")
+                if clarification_reason:
+                    print(f"   Reason: {clarification_reason}")
+                
+                # Show clarification dialog
+                confirmed_text = show_clarification_dialog(text, reason=clarification_reason)
+                
+                if confirmed_text is None:
+                    # User cancelled
+                    print("   Clarification cancelled, skipping command.\n")
+                    continue
+                
+                if confirmed_text != text:
+                    # User corrected the text, re-parse intent
+                    print(f"   Corrected text: '{confirmed_text}'")
+                    text = confirmed_text
+                    
+                    # Re-parse intent with corrected text
+                    start_llm = time.time()
+                    intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs)
+                    llm_time = time.time() - start_llm
+                    print(f"⏱️  LLM (Re-parsing) took: {llm_time:.2f}s\n")
+                else:
+                    # User confirmed, proceed with original intent
+                    print("   Text confirmed, proceeding with command.\n")
             
             # Execute command
             intent_type = intent.get("type", "list_apps")
