@@ -12,13 +12,13 @@ def print_help():
     print("=" * 60)
     print("macOS Voice Window Agent")
     print("=" * 60)
-    print("\nCommands:")
+    print("\n🎤 Voice Commands:")
     print("  - 'Bring [App] to view' / 'Focus [App]' / 'Show [App]'")
     print("  - 'List apps' / 'What's running'")
     print("  - 'quit' or 'exit' to stop")
     print(f"\nUsing LLM endpoint: {LLM_ENDPOINT}")
     print("=" * 60)
-    print()
+    print("\nSpeak your command, then press Enter when done.\n")
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
             running_apps = list_running_apps()
             
             # Parse intent using AI agent
-            print("Processing command...")
+            print(f"\n📝 Processing: '{text}'...")
             intent = agent.parse_intent(text, running_apps, installed_apps)
             
             # Execute command

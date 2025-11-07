@@ -24,10 +24,18 @@ A Python-based voice window agent that allows you to control macOS application w
 pip install -r requirements.txt
 ```
 
-Or install manually:
+This installs:
+- `openai` - For LLM API client
+- `SpeechRecognition` - For speech-to-text library
+- `pyaudio` - For microphone access
+- `pocketsphinx` - For offline speech recognition (no API key needed)
+
+**Note**: On macOS, you may need to install PortAudio for pyaudio:
 ```bash
-pip install openai
+brew install portaudio
 ```
+
+The agent uses offline speech recognition (Sphinx) which doesn't require any API keys or internet connection.
 
 3. Ensure your local LLM server is running and accessible at the configured endpoint (default: `http://192.168.1.198:10000/v1`)
 
@@ -59,10 +67,13 @@ python3 -m voice_agent.main
 - **Quit**: "quit", "exit", or press Ctrl+C
 
 The agent will:
-1. Listen to your command (currently via text input)
-2. Get context about running and installed apps
-3. Use AI to parse your intent and extract the exact app name
-4. Execute the appropriate AppleScript command
+1. Listen to your voice command via microphone
+2. Transcribe your speech using offline speech recognition (Sphinx - no API key needed)
+3. Get context about running and installed apps
+4. Use AI to parse your intent and extract the exact app name
+5. Execute the appropriate AppleScript command
+
+**Note**: Uses offline speech recognition - no API keys, no internet connection, and no cloud services required!
 
 ## Project Structure
 
@@ -76,28 +87,17 @@ voice_agent/
   config.py            # Configuration (LLM endpoint, etc.)
 ```
 
-## Adding Real Speech-to-Text
+## Microphone Permissions
 
-Currently, the agent uses text input as a placeholder. To add real microphone transcription:
+On macOS, you'll need to grant microphone permissions to Terminal (or your Python interpreter):
+1. System Preferences > Security & Privacy > Privacy > Microphone
+2. Enable Terminal (or your IDE/terminal app)
 
-1. Install a speech-to-text library (e.g., `openai-whisper` or `whisper.cpp`)
-2. Modify `voice_agent/stt.py` to use the library instead of `input()`
-
-Example with OpenAI Whisper:
-```python
-import whisper
-
-model = whisper.load_model("base")
-
-def transcribe_once() -> str:
-    # Record audio from microphone
-    # Return transcribed text
-    pass
-```
+The agent will automatically detect when you start and stop speaking.
 
 ## How It Works
 
-1. **Input**: User provides command via text (or voice, once STT is integrated)
+1. **Input**: User speaks command into microphone
 2. **Context Gathering**: Agent collects list of running apps and optionally installed apps
 3. **AI Parsing**: Local LLM parses the command with context to extract:
    - Intent type (`list_apps` or `focus_app`)

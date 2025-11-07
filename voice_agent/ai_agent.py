@@ -98,6 +98,7 @@ class AIAgent:
                 )
             except Exception as format_error:
                 # Fallback if response_format is not supported
+                print(f"Note: JSON mode not supported, using fallback: {format_error}")
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -138,5 +139,7 @@ class AIAgent:
                 
         except Exception as e:
             print(f"Error calling AI agent: {e}")
+            import traceback
+            traceback.print_exc()
             return {"type": "list_apps"}
 
