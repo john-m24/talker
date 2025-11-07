@@ -1,0 +1,40 @@
+{
+  "code space": {
+    "apps": [
+      {
+        "app_name": "Google Chrome",
+        "monitor": "left",
+        "maximize": false
+      },
+      {
+        "app_name": "Cursor",
+        "monitor": "right",
+        "maximize": false
+      }
+    ]
+  },
+  "development": {
+    "apps": [
+      {
+        "app_name": "Cursor",
+        "monitor": "left",
+        "maximize": true
+      },
+      {
+        "app_name": "Terminal",
+        "monitor": "right",
+        "maximize": false
+      }
+    ]
+  },
+  "browsing": {
+    "apps": [
+      {
+        "app_name": "Google Chrome",
+        "monitor": "main",
+        "maximize": true
+      }
+    ]
+  }
+}
+

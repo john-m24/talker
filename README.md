@@ -8,6 +8,7 @@ A Python-based voice window agent that allows you to control macOS application w
 - **AI-Powered Intent Parsing**: Uses a local OpenAI-compatible LLM to understand your commands
 - **Fuzzy App Matching**: Automatically matches fuzzy app names to exact application names
 - **Context-Aware**: Uses running and installed apps for better matching
+- **Preset Window Layouts**: Define and activate named presets to quickly arrange multiple apps across monitors
 
 ## Requirements
 
@@ -47,6 +48,7 @@ The agent can be configured via environment variables:
 - `VOICE_AGENT_LLM_ENDPOINT`: URL of your local LLM endpoint (default: `http://192.168.1.198:10000/v1`)
 - `VOICE_AGENT_LLM_MODEL`: Model name to use (default: `qwen-30b`)
 - `VOICE_AGENT_STT_ENGINE`: Speech-to-text engine - `macos` (default on macOS), `whisper`, or `sphinx`
+- `VOICE_AGENT_PRESETS_FILE`: Path to presets configuration file (optional, see Presets section below)
 
 Example:
 ```bash
@@ -54,6 +56,61 @@ export VOICE_AGENT_LLM_ENDPOINT="http://localhost:8000/v1"
 export VOICE_AGENT_LLM_MODEL="llama2"
 python3 -m voice_agent.main
 ```
+
+### Presets Configuration
+
+You can define preset window layouts that arrange multiple applications across monitors. Presets are stored in a JSON configuration file.
+
+**Preset File Location** (checked in order):
+1. Path specified in `VOICE_AGENT_PRESETS_FILE` environment variable
+2. `~/.voice_agent_presets.json` (user home directory)
+3. `presets.json` in the project root
+
+**Preset File Format**:
+
+Create a JSON file with the following structure:
+
+```json
+{
+  "code space": {
+    "apps": [
+      {
+        "app_name": "Google Chrome",
+        "monitor": "left",
+        "maximize": false
+      },
+      {
+        "app_name": "Cursor",
+        "monitor": "right",
+        "maximize": false
+      }
+    ]
+  },
+  "development": {
+    "apps": [
+      {
+        "app_name": "Cursor",
+        "monitor": "left",
+        "maximize": true
+      },
+      {
+        "app_name": "Terminal",
+        "monitor": "right",
+        "maximize": false
+      }
+    ]
+  }
+}
+```
+
+Each preset contains:
+- **Preset name**: The key (e.g., "code space") - this is what you'll say to activate it
+- **apps**: Array of app placement instructions, each with:
+  - `app_name`: Exact application name (must match the app name as shown in "list apps")
+  - `monitor`: One of `"main"`, `"left"`, or `"right"` (must match your monitor configuration in `config.py`)
+  - `maximize`: Optional boolean (default: `false`) - whether to maximize the window to fill the monitor
+
+See `presets.json.example` for a complete example.
 
 ## Usage
 
@@ -65,7 +122,11 @@ python3 -m voice_agent.main
 ### Example Commands
 
 - **Focus an app**: "Bring Docker to view", "Focus Chrome", "Show Slack"
+- **Place app on monitor**: "Put Chrome on left monitor", "Move Cursor to right screen", "Place Terminal on main monitor and maximize"
 - **List apps**: "List apps", "What's running", "Show me my open applications"
+- **Activate preset**: "Activate code space", "code space", "Set up development", "Load browsing"
+- **Switch Chrome tabs**: "Switch to Gmail", "Go to tab 3", "List tabs"
+- **Close app/tab**: "Close Chrome", "Close tab 2", "Quit Docker"
 - **Quit**: "quit", "exit", or press Ctrl+C
 
 The agent will:
@@ -87,6 +148,10 @@ voice_agent/
   ai_agent.py          # AI client for intent parsing
   window_control.py    # AppleScript helpers for window control
   config.py            # Configuration (LLM endpoint, etc.)
+  presets.py           # Preset window layout management
+  commands/            # Command implementations
+    activate_preset.py # Preset activation command
+    ...
 ```
 
 ## Microphone Permissions
@@ -101,11 +166,13 @@ On macOS, you'll need to grant microphone permissions to Terminal (or your Pytho
 ## How It Works
 
 1. **Input**: User speaks command into microphone
-2. **Context Gathering**: Agent collects list of running apps and optionally installed apps
+2. **Context Gathering**: Agent collects list of running apps, installed apps, Chrome tabs (if applicable), and available presets
 3. **AI Parsing**: Local LLM parses the command with context to extract:
-   - Intent type (`list_apps` or `focus_app`)
+   - Intent type (`list_apps`, `focus_app`, `place_app`, `activate_preset`, `switch_tab`, `close_app`, `close_tab`, etc.)
    - Exact app name (matched from running/installed apps)
-4. **Execution**: AppleScript commands are executed via `osascript` to control windows
+   - Monitor placement (for `place_app`)
+   - Preset name (for `activate_preset`)
+4. **Execution**: AppleScript commands are executed via `osascript` to control windows, or preset commands execute multiple app placements
 
 ## Troubleshooting
 

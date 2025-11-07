@@ -7,6 +7,9 @@ from .list_tabs import ListTabsCommand
 from .focus_app import FocusAppCommand
 from .place_app import PlaceAppCommand
 from .switch_tab import SwitchTabCommand
+from .close_app import CloseAppCommand
+from .close_tab import CloseTabCommand
+from .activate_preset import ActivatePresetCommand
 
 
 class CommandExecutor:
@@ -20,6 +23,9 @@ class CommandExecutor:
             FocusAppCommand(),
             PlaceAppCommand(),
             SwitchTabCommand(),
+            CloseAppCommand(),
+            CloseTabCommand(),
+            ActivatePresetCommand(),
         ]
     
     def execute(self, intent: Any, running_apps: list = None, chrome_tabs: list = None) -> bool:

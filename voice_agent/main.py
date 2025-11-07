@@ -12,6 +12,7 @@ from .clarification import show_clarification_dialog
 from .commands import CommandExecutor
 from .config import LLM_ENDPOINT, STT_ENGINE, HOTKEY, WHISPER_MODEL
 from .hotkey import HotkeyListener
+from .presets import load_presets, list_presets
 
 
 def print_help():
@@ -26,6 +27,9 @@ def print_help():
     print("  - 'Place [App] on [monitor] and maximize'")
     print("  - 'List apps' / 'What's running'")
     print("  - 'Switch to [Tab]' / 'Go to tab [Number]' / 'List tabs'")
+    print("  - 'Close [App]' / 'Quit [App]'")
+    print("  - 'Close tab [Number]' / 'Close [Tab Name]'")
+    print("  - 'Activate [Preset]' / '[Preset]' / 'Set up [Preset]' (preset window layouts)")
     print("  - 'quit' or 'exit' to stop")
     print(f"\nUsing LLM endpoint: {LLM_ENDPOINT}")
     print(f"Using STT engine: {STT_ENGINE.upper()}")
@@ -58,7 +62,8 @@ def handle_clarification(
     agent: AIAgent,
     running_apps: list,
     installed_apps: list,
-    chrome_tabs: Optional[list]
+    chrome_tabs: Optional[list],
+    available_presets: Optional[list] = None
 ) -> Tuple[str, dict]:
     """
     Handle clarification dialog if needed.
@@ -102,7 +107,7 @@ def handle_clarification(
         
         # Re-parse intent with corrected text
         start_llm = time.time()
-        intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs)
+        intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs, available_presets=available_presets)
         llm_time = time.time() - start_llm
         print(f"⏱️  LLM (Re-parsing) took: {llm_time:.2f}s\n")
     else:
@@ -144,6 +149,14 @@ def main():
     # Get installed apps once (for context)
     installed_apps = list_installed_apps()
     
+    # Load presets at startup
+    presets = load_presets()
+    available_presets = list_presets(presets) if presets else []
+    if available_presets:
+        print(f"📋 Loaded {len(available_presets)} preset(s): {', '.join(available_presets)}\n")
+    else:
+        print("📋 No presets configured. Create ~/.voice_agent_presets.json or presets.json to use presets.\n")
+    
     # Initialize command executor
     command_executor = CommandExecutor()
     
@@ -167,9 +180,12 @@ def main():
             # Build context for Whisper transcription (pre-built, no delay)
             context_parts = [
                 "macOS window control commands.",
-                "Commands: bring to view, focus, list apps, switch tab, place on monitor, move to screen.",
+                "Commands: bring to view, focus, list apps, switch tab, place on monitor, move to screen, activate preset.",
                 "Monitor terms: main monitor, right monitor, left monitor, main screen, right screen, left screen."
             ]
+            
+            if available_presets:
+                context_parts.append(f"Available presets: {', '.join(available_presets)}.")
             
             if running_apps:
                 # Limit to first 20 apps to keep context manageable
@@ -214,12 +230,12 @@ def main():
             intent_result = time_operation(
                 "LLM (Intent Parsing)",
                 agent.parse_intent,
-                text, running_apps, installed_apps, chrome_tabs=chrome_tabs
+                text, running_apps, installed_apps, chrome_tabs=chrome_tabs, available_presets=available_presets
             )
             
             # Handle clarification if needed
             text, intent_result = handle_clarification(
-                text, intent_result, agent, running_apps, installed_apps, chrome_tabs
+                text, intent_result, agent, running_apps, installed_apps, chrome_tabs, available_presets
             )
             
             if text is None or intent_result is None:

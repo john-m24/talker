@@ -31,7 +31,8 @@ class AIAgent:
         text: str, 
         running_apps: List[str], 
         installed_apps: Optional[List[str]] = None,
-        chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None
+        chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None,
+        available_presets: Optional[List[str]] = None
     ) -> Dict[str, Union[List[Dict], bool, Optional[str]]]:
         """
         Parse user command text into structured intents (supports single or multiple commands).
@@ -41,12 +42,14 @@ class AIAgent:
             running_apps: List of currently running applications
             installed_apps: Optional list of installed applications
             chrome_tabs: Optional list of Chrome tabs with 'index' and 'title' keys
+            available_presets: Optional list of available preset names
             
         Returns:
             Dictionary with 'commands' array (list of intent dicts), 'needs_clarification', and 'clarification_reason'
-            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index'
+            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index', 'preset_name'
             Example (single command): {"commands": [{"type": "focus_app", "app_name": "Docker Desktop"}], "needs_clarification": false, "clarification_reason": null}
             Example (multiple commands): {"commands": [{"type": "place_app", "app_name": "Google Chrome", "monitor": "left"}, {"type": "place_app", "app_name": "Cursor", "monitor": "right"}], "needs_clarification": false, "clarification_reason": null}
+            Example (preset): {"commands": [{"type": "activate_preset", "preset_name": "code space"}], "needs_clarification": false, "clarification_reason": null}
         """
         # Build context for the AI
         context_parts = [
@@ -58,9 +61,18 @@ class AIAgent:
             "- 'place_app' - move an application window to a specific monitor (main, right, or left)",
             "- 'switch_tab' - switch to a specific Chrome tab",
             "- 'list_tabs' - list all open Chrome tabs",
+            "- 'close_app' - quit/close an application completely",
+            "- 'close_tab' - close a specific Chrome tab",
+            "- 'activate_preset' - activate a named preset window layout",
             "",
             f"Currently running applications: {', '.join(running_apps) if running_apps else 'None'}",
         ]
+        
+        # Add available presets context if presets are configured
+        if available_presets:
+            context_parts.append(
+                f"Available presets: {', '.join(available_presets)}"
+            )
         
         # Add Chrome tabs context if available
         if chrome_tabs:
@@ -97,12 +109,13 @@ class AIAgent:
             "- 'clarification_reason': (string, optional) brief explanation of why clarification is needed, or null if not needed",
             "",
             "Each intent object in the 'commands' array should have:",
-            "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', or 'list_tabs'",
-            "- 'app_name': (for focus_app and place_app) the exact application name from the running apps list",
+            "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', 'list_tabs', 'close_app', 'close_tab', or 'activate_preset'",
+            "- 'app_name': (for focus_app, place_app, and close_app) the exact application name from the running apps list",
             "- 'monitor': (for place_app) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
             "- 'maximize': (for place_app, optional boolean) true if user wants to maximize the window, false otherwise",
-            "- 'tab_title': (for switch_tab) match keywords from the user's command to the Chrome tab titles",
-            "- 'tab_index': (for switch_tab, optional) the tab number if user specifies a number",
+            "- 'tab_title': (for switch_tab and close_tab) match keywords from the user's command to the Chrome tab titles",
+            "- 'tab_index': (for switch_tab and close_tab, optional) the tab number if user specifies a number",
+            "- 'preset_name': (for activate_preset) the exact preset name from the available presets list (case-insensitive matching is supported)",
             "",
             "Monitor placement patterns to recognize:",
             "- 'put X on [right/left/main] monitor' -> type: 'place_app', monitor: 'right'/'left'/'main'",
@@ -117,6 +130,20 @@ class AIAgent:
             "If the user wants to switch tabs, match keywords from their command to the Chrome tab titles.",
             "For example: 'Gmail' matches 'Gmail - Inbox', 'YouTube' matches 'YouTube - Watch', etc.",
             "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
+            "If the user wants to close/quit an app, use type 'close_app' and extract the app name.",
+            "Patterns for close_app: 'close [App]', 'quit [App]', 'exit [App]' -> type: 'close_app'.",
+            "If the user wants to close a tab, use type 'close_tab' and extract tab_title or tab_index.",
+            "Patterns for close_tab: 'close tab [Number]', 'close [Tab Name]' -> type: 'close_tab'.",
+            "If the user wants to activate a preset, use type 'activate_preset' and extract the preset name.",
+            "Preset activation patterns to recognize:",
+            "- 'activate [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
+            "- '[preset name]' (standalone, if it matches an available preset) -> type: 'activate_preset', preset_name: '[preset name]'",
+            "- 'set up [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
+            "- 'load [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
+            "- 'switch to [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
+            "Match the user's input to the available presets list (case-insensitive, partial matching supported).",
+            "If multiple presets match or preset name is ambiguous, set needs_clarification to true.",
+            "If preset name is not found in available presets, set needs_clarification to true.",
             "If the command is unclear, default to 'list_apps'.",
             "",
             "When parsing multiple commands:",

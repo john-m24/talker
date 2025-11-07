@@ -125,6 +125,31 @@ def activate_app(app_name: str) -> bool:
         return False
 
 
+def close_app(app_name: str) -> bool:
+    """
+    Quit (close) an application completely by name.
+    This terminates the application process, not just closing windows.
+    
+    Args:
+        app_name: Name of the application to quit
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        script = f'tell application "{app_name}" to quit'
+        success, stdout, stderr = _executor.execute(script)
+        
+        if success:
+            return True
+        else:
+            print(f"Error closing app '{app_name}': {stderr}")
+            return False
+    except Exception as e:
+        print(f"Unexpected error closing app '{app_name}': {e}")
+        return False
+
+
 def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = False) -> bool:
     """
     Place an application's front window on a specific monitor.

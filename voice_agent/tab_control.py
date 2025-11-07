@@ -111,3 +111,63 @@ def switch_to_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[in
         print(f"Unexpected error switching Chrome tab: {e}")
         return False
 
+
+def close_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[int] = None) -> bool:
+    """
+    Close a specific Chrome tab by title or index.
+    Closes the tab directly without confirmation dialog.
+    Supports global tab indices (across all windows) when using tab_index.
+    
+    Args:
+        tab_title: Title of the tab to close (fuzzy matching via contains, searches front window only)
+        tab_index: Global index of the tab (1-based, across all windows, matching list_chrome_tabs)
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if tab_index:
+            # Close by global index (across all windows)
+            script = f'''
+            tell application "Google Chrome"
+                activate
+                set globalTabIndex to 1
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if globalTabIndex = {tab_index} then
+                            close t
+                            return true
+                        end if
+                        set globalTabIndex to globalTabIndex + 1
+                    end repeat
+                end repeat
+            end tell
+            '''
+        elif tab_title:
+            # Close by title (fuzzy match, searches front window only for consistency with switch_to_chrome_tab)
+            script = f'''
+            tell application "Google Chrome"
+                activate
+                set frontWindow to front window
+                repeat with t in tabs of frontWindow
+                    if title of t contains "{tab_title}" then
+                        close t
+                        return true
+                    end if
+                end repeat
+            end tell
+            '''
+        else:
+            return False
+            
+        success, stdout, stderr = _executor.execute(script)
+        
+        if success:
+            return True
+        else:
+            print(f"Error closing Chrome tab: {stderr}")
+            return False
+    except Exception as e:
+        print(f"Unexpected error closing Chrome tab: {e}")
+        return False
+
