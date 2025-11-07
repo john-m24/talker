@@ -4,6 +4,7 @@ import sys
 import time
 from typing import Optional, Tuple
 from .stt import transcribe_while_held
+from .stt.factory import set_cached_engine
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps
 from .tab_control import list_chrome_tabs
@@ -112,14 +113,19 @@ def main():
     print_help()
     
     # Pre-load Whisper model if using Whisper engine (reduces delay on hotkey press)
+    whisper_engine = None
     if STT_ENGINE.lower() == "whisper":
         try:
-            from .stt.engines.whisper_engine import preload_whisper_model
+            from .stt.engines.whisper_engine import preload_whisper_model, WhisperSTTEngine
             print("🔄 Pre-loading Whisper model...")
             preload_whisper_model(WHISPER_MODEL)
+            print("🔄 Starting persistent microphone stream...")
+            whisper_engine = WhisperSTTEngine.initialize_persistent_stream()
+            # Set the cached engine so factory uses the initialized instance
+            set_cached_engine(whisper_engine)
             print()
         except Exception as e:
-            print(f"⚠️  Warning: Could not pre-load Whisper model: {e}")
+            print(f"⚠️  Warning: Could not initialize Whisper: {e}")
             print("   Model will be loaded on first use.\n")
     
     # Initialize AI agent
@@ -190,6 +196,8 @@ def main():
             if text.lower() in ["quit", "exit", "q"]:
                 print("Goodbye!")
                 hotkey_listener.stop()
+                if whisper_engine is not None:
+                    whisper_engine._stop_persistent_stream()
                 break
             
             # Get Chrome tabs if Chrome is running (for tab switching context)
@@ -222,6 +230,8 @@ def main():
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")
             hotkey_listener.stop()
+            if whisper_engine is not None:
+                whisper_engine._stop_persistent_stream()
             break
         except Exception as e:
             print(f"Error: {e}\n")

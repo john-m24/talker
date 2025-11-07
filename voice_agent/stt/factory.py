@@ -4,6 +4,9 @@ from typing import Optional, Callable
 from .base import STTEngine
 from ..config import STT_ENGINE
 
+# Module-level cache for engine instance
+_cached_engine = None
+
 
 def create_stt_engine(engine_name: Optional[str] = None) -> STTEngine:
     """
@@ -48,6 +51,33 @@ def transcribe_once(timeout: Optional[float] = None, phrase_time_limit: Optional
     return engine.transcribe(timeout=timeout, phrase_time_limit=phrase_time_limit)
 
 
+def get_stt_engine(engine_name: Optional[str] = None) -> STTEngine:
+    """
+    Get or create STT engine instance (cached, with persistent stream if Whisper).
+    
+    Args:
+        engine_name: Name of the engine to create (defaults to config value)
+    
+    Returns:
+        STTEngine instance (cached)
+    """
+    global _cached_engine
+    if _cached_engine is None:
+        _cached_engine = create_stt_engine(engine_name)
+    return _cached_engine
+
+
+def set_cached_engine(engine: STTEngine):
+    """
+    Set the cached engine instance (used when engine is pre-initialized).
+    
+    Args:
+        engine: STTEngine instance to cache
+    """
+    global _cached_engine
+    _cached_engine = engine
+
+
 def transcribe_while_held(is_held, context: Optional[str] = None) -> str:
     """
     Record audio while a condition is true (e.g., while hotkey is held).
@@ -59,6 +89,6 @@ def transcribe_while_held(is_held, context: Optional[str] = None) -> str:
     Returns:
         Transcribed text as a string
     """
-    engine = create_stt_engine()
+    engine = get_stt_engine()  # Use cached instance
     return engine.transcribe_while_held(is_held, context=context)
 

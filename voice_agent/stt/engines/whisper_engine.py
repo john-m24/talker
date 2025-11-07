@@ -43,6 +43,55 @@ def preload_whisper_model(model_name: str = "base"):
 class WhisperSTTEngine(STTEngine):
     """Whisper speech-to-text engine."""
     
+    def __init__(self):
+        """Initialize with persistent audio stream."""
+        self._persistent_stream = None
+        self._audio_queue = queue.Queue()
+        self._recording_active = threading.Event()
+        self._stream_lock = threading.Lock()
+        self._sample_rate = 16000
+        self._chunk_duration = 0.05
+    
+    def _start_persistent_stream(self):
+        """Start the persistent audio stream that runs continuously."""
+        with self._stream_lock:
+            if self._persistent_stream is not None and self._persistent_stream.active:
+                return  # Already running
+            
+            def audio_callback(indata, frames, time_info, status):
+                """Callback - always collects, but only queues when recording active."""
+                if self._recording_active.is_set():
+                    self._audio_queue.put(indata.copy())
+            
+            self._persistent_stream = sd.InputStream(
+                samplerate=self._sample_rate,
+                channels=1,
+                dtype=np.float32,
+                callback=audio_callback,
+                blocksize=int(self._sample_rate * self._chunk_duration)
+            )
+            self._persistent_stream.start()
+    
+    def _stop_persistent_stream(self):
+        """Stop and close the persistent audio stream."""
+        with self._stream_lock:
+            if self._persistent_stream is not None:
+                try:
+                    if self._persistent_stream.active:
+                        self._persistent_stream.stop()
+                    self._persistent_stream.close()
+                except:
+                    pass
+                self._persistent_stream = None
+    
+    @classmethod
+    def initialize_persistent_stream(cls):
+        """Create a WhisperSTTEngine instance with persistent stream running."""
+        engine = cls()
+        engine._start_persistent_stream()
+        print("✅ Microphone listening continuously (ready for hotkey)")
+        return engine
+    
     def transcribe(self, timeout: Optional[float] = None, phrase_time_limit: Optional[float] = None) -> str:
         """Transcribe using Whisper."""
         model = _get_whisper_model(WHISPER_MODEL)
@@ -177,30 +226,18 @@ class WhisperSTTEngine(STTEngine):
         
         print("\n🎤 Listening... (hold hotkey to speak)")
         
-        # Record audio using thread-safe queue
-        sample_rate = 16000
-        audio_queue = queue.Queue()
-        recording = threading.Event()
-        recording.set()
-        chunk_duration = 0.05  # Process chunks every 50ms
+        # Ensure persistent stream is running
+        self._start_persistent_stream()
         
-        def audio_callback(indata, frames, time_info, status):
-            """Callback for audio recording."""
-            if status:
-                print(f"Audio status: {status}")
-            if recording.is_set():
-                audio_queue.put(indata.copy())
+        # Clear any old audio from queue
+        while not self._audio_queue.empty():
+            try:
+                self._audio_queue.get_nowait()
+            except:
+                break
         
-        # Start recording
-        stream = sd.InputStream(
-            samplerate=sample_rate,
-            channels=1,
-            dtype=np.float32,
-            callback=audio_callback,
-            blocksize=int(sample_rate * chunk_duration)
-        )
-        
-        stream.start()
+        # Start recording (stream already running, just start collecting)
+        self._recording_active.set()
         
         # Record while hotkey is held
         audio_chunks = []
@@ -208,29 +245,27 @@ class WhisperSTTEngine(STTEngine):
         
         while is_held():
             # Collect chunks
-            while not audio_queue.empty():
-                chunk = audio_queue.get()
+            while not self._audio_queue.empty():
+                chunk = self._audio_queue.get()
                 audio_chunks.append(chunk)
             
             time.sleep(0.02)  # Small delay to avoid busy waiting
         
+        # Stop collecting (but keep stream running)
+        self._recording_active.clear()
+        
         # Wait a bit more to ensure we get all audio
         time.sleep(0.1)
-        while not audio_queue.empty():
-            chunk = audio_queue.get()
+        while not self._audio_queue.empty():
+            chunk = self._audio_queue.get()
             audio_chunks.append(chunk)
-        
-        # Stop recording
-        recording.clear()
-        stream.stop()
-        stream.close()
         
         if not audio_chunks:
             print("   (No audio recorded)")
             return ""
         
         # Check minimum duration
-        duration = len(audio_chunks) * chunk_duration
+        duration = len(audio_chunks) * self._chunk_duration
         if duration < min_recording_duration:
             print("   (Recording too short)")
             return ""
