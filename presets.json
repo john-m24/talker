@@ -1,8 +1,8 @@
 {
-  "code space": {
+  "work space": {
     "apps": [
       {
-        "app_name": "Google Chrome",
+        "app_name": "Obsidian",
         "monitor": "left",
         "maximize": false
       },
@@ -13,15 +13,15 @@
       }
     ]
   },
-  "development": {
+  "dumb space": {
     "apps": [
       {
-        "app_name": "Cursor",
+        "app_name": "Notion",
         "monitor": "left",
         "maximize": true
       },
       {
-        "app_name": "Terminal",
+        "app_name": "Firefox",
         "monitor": "right",
         "maximize": false
       }

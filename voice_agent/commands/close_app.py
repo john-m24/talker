@@ -27,3 +27,11 @@ class CloseAppCommand(Command):
             print("Error: No app name specified in intent\n")
             return False
 
+
+
+
+
+
+
+
+

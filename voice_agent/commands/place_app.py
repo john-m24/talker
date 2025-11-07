@@ -19,9 +19,19 @@ class PlaceAppCommand(Command):
         maximize = intent.get("maximize", False)
         
         if app_name and monitor:
+            # Check if app is running to provide better feedback
+            from ..window_control import list_running_apps
+            running_apps = list_running_apps()
+            is_running = app_name in running_apps
+            
             monitor_display = monitor.replace("_", " ").title()
             maximize_text = " and maximizing" if maximize else ""
-            print(f"Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
+            
+            if is_running:
+                print(f"Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
+            else:
+                print(f"Opening '{app_name}' and placing on {monitor_display} monitor{maximize_text} (app is not currently running)...")
+            
             success = place_app_on_monitor(app_name, monitor, maximize=maximize)
             if success:
                 print(f"✓ Successfully placed '{app_name}' on {monitor_display} monitor\n")

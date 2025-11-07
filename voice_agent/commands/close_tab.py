@@ -34,3 +34,11 @@ class CloseTabCommand(Command):
         
         return success
 
+
+
+
+
+
+
+
+

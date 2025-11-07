@@ -49,7 +49,7 @@ class ActivatePresetCommand(Command):
         print(f"Activating preset '{preset_name}'...")
         print(f"  Configuring {len(apps)} app(s)\n")
         
-        # Get running apps to check availability
+        # Get running apps to provide better feedback
         running_apps = list_running_apps()
         
         # Execute each app placement
@@ -64,16 +64,17 @@ class ActivatePresetCommand(Command):
                 all_succeeded = False
                 continue
             
-            # Check if app is running
-            if app_name not in running_apps:
-                print(f"  ⚠️  App '{app_name}' is not running, skipping...")
-                all_succeeded = False
-                continue
+            # Check if app is running to provide better feedback
+            is_running = app_name in running_apps
             
-            # Place the app
+            # Place the app (will launch if not running)
             monitor_display = monitor.replace("_", " ").title()
             maximize_text = " and maximizing" if maximize else ""
-            print(f"  [{i}/{len(apps)}] Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
+            
+            if is_running:
+                print(f"  [{i}/{len(apps)}] Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
+            else:
+                print(f"  [{i}/{len(apps)}] Opening '{app_name}' and placing on {monitor_display} monitor{maximize_text} (app is not currently running)...")
             
             success = place_app_on_monitor(app_name, monitor, maximize=maximize)
             if success:

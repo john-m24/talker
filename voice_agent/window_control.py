@@ -104,6 +104,7 @@ def show_apps_list(apps: List[str]) -> bool:
 def activate_app(app_name: str) -> bool:
     """
     Activate (bring to front) an application by name.
+    If the app is not running, it will be launched automatically.
     
     Args:
         app_name: Name of the application to activate
@@ -112,13 +113,40 @@ def activate_app(app_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
+        # First, try to activate (this will launch the app if it's not running)
         script = f'tell application "{app_name}" to activate'
         success, stdout, stderr = _executor.execute(script)
         
         if success:
             return True
+        
+        # If activate failed, try explicitly launching the app
+        # This handles cases where the app name might need to be resolved
+        launch_script = f'''
+        tell application "System Events"
+            try
+                set appPath to POSIX path of (path to application "{app_name}")
+                do shell script "open " & quoted form of appPath
+                return true
+            on error
+                -- Try direct launch as fallback
+                try
+                    tell application "{app_name}" to launch
+                    delay 0.5
+                    tell application "{app_name}" to activate
+                    return true
+                on error errMsg
+                    return false
+                end try
+            end try
+        end tell
+        '''
+        success, stdout, stderr = _executor.execute(launch_script)
+        
+        if success:
+            return True
         else:
-            print(f"Error activating app '{app_name}': {stderr}")
+            print(f"Error activating/launching app '{app_name}': {stderr}")
             return False
     except Exception as e:
         print(f"Unexpected error activating app '{app_name}': {e}")
@@ -157,12 +185,23 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
     Args:
         app_name: Name of the application to move
         monitor_name: Name of the monitor ("main", "right", or "left")
-        maximize: If True, maximize the window to fill the entire monitor
+        maximize: If True, maximize the window to fill the entire monitor.
+                  If False and app is newly launched, will default to True.
         
     Returns:
         True if successful, False otherwise
     """
     try:
+        # Check if app is running before we activate it
+        # If not running, default to maximizing when launched
+        running_apps = list_running_apps()
+        is_running = app_name in running_apps
+        
+        # If app is not running and maximize wasn't explicitly set to False,
+        # default to maximizing newly launched apps
+        if not is_running and not maximize:
+            maximize = True
+        
         # Look up monitor coordinates
         if monitor_name not in MONITORS:
             print(f"Error: Unknown monitor '{monitor_name}'. Available: {', '.join(MONITORS.keys())}")
@@ -177,6 +216,7 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
         # Debug: Print monitor info
         print(f"DEBUG: Placing '{app_name}' on monitor '{monitor_name}'")
         print(f"DEBUG: Monitor coordinates: x={x}, y={y}, w={w}, h={h}")
+        print(f"DEBUG: App was running: {is_running}, Maximize: {maximize}")
         
         # Calculate window bounds: {left, top, right, bottom}
         if maximize:
@@ -250,11 +290,16 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
                 bottom = y + min(600, h)
         
         # Move and resize the window
+        # If app was just launched, add a delay to let the window appear
+        delay_line = ""
+        if not is_running:
+            delay_line = "            delay 0.5\n"
+        
         # Use try-catch to handle apps that don't support "count of windows"
         script = f'''
         tell application "{app_name}"
             activate
-            try
+{delay_line}            try
                 set bounds of front window to {{{left}, {top}, {right}, {bottom}}}
                 return true
             on error errMsg
@@ -263,7 +308,7 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
                     tell application "System Events"
                         tell process "{app_name}"
                             set frontmost to true
-                            set position of window 1 to {{{left}, {top}}}
+{delay_line}                            set position of window 1 to {{{left}, {top}}}
                             set size of window 1 to {{{right - left}, {bottom - top}}}
                         end tell
                     end tell
