@@ -221,7 +221,7 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
     
     # Stage 2: Record while speaking, detect end
     silence_start_time = None
-    min_recording_duration = 0.3  # Minimum 0.3s recording after speech starts
+    min_recording_duration = 0.1  # Minimum 0.1s recording after speech starts
     speech_start_time = time.time()
     
     while True:
@@ -450,7 +450,7 @@ def _transcribe_whisper(sample_rate: int = 16000, timeout: Optional[float] = Non
     
     # Stage 2: Record while speaking, detect end
     silence_start_time = None
-    min_recording_duration = 0.3  # Minimum 0.3s recording after speech starts
+    min_recording_duration = 0.1  # Minimum 0.1s recording after speech starts
     speech_start_time = time.time()
     
     while True:
