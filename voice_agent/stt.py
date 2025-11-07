@@ -74,6 +74,7 @@ def _get_macos_recognition_delegate_class():
 def _calculate_audio_energy(audio_chunk: np.ndarray) -> float:
     """
     Calculate RMS energy of audio chunk and convert to dB.
+    Optimized version using faster numpy operations.
     
     Args:
         audio_chunk: Audio data as numpy array
@@ -81,7 +82,8 @@ def _calculate_audio_energy(audio_chunk: np.ndarray) -> float:
     Returns:
         Energy in dB
     """
-    rms = np.sqrt(np.mean(audio_chunk**2))
+    # Use np.square instead of **2, slightly faster
+    rms = np.sqrt(np.mean(np.square(audio_chunk)))
     # Convert to dB, avoid log(0) by adding small epsilon
     db = 20 * np.log10(rms + 1e-10)
     return db
