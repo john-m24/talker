@@ -1,8 +1,10 @@
-"""Speech-to-text abstraction layer supporting Whisper and Sphinx."""
+"""Speech-to-text abstraction layer supporting macOS native, Whisper, and Sphinx."""
 
 import os
 import sounddevice as sd
 import numpy as np
+import threading
+import time
 from typing import Optional
 from .config import STT_ENGINE, WHISPER_MODEL
 
@@ -23,6 +25,46 @@ _whisper_model = None
 _sphinx_recognizer = None
 _sphinx_microphone = None
 
+# macOS Speech Recognition delegate class (defined once at module level)
+_macos_recognition_delegate_class = None
+
+def _get_macos_recognition_delegate_class():
+    """Get or create the macOS recognition delegate class."""
+    global _macos_recognition_delegate_class
+    if _macos_recognition_delegate_class is None:
+        try:
+            from Foundation import NSObject
+            import objc
+            
+            class RecognitionDelegate(NSObject):
+                def initWithResultContainer_(self, result_container):
+                    self = objc.super(RecognitionDelegate, self).init()
+                    if self is None:
+                        return None
+                    self.result_container = result_container
+                    return self
+                
+                def speechRecognitionTask_didFinishRecognition_(self, task, result):
+                    if result:
+                        best_transcription = result.bestTranscription()
+                        if best_transcription:
+                            self.result_container['text'] = best_transcription.formattedString()
+                    self.result_container['done'] = True
+                
+                def speechRecognitionTask_didFinishSuccessfully_(self, task, finished):
+                    if not finished:
+                        self.result_container['error'] = "Recognition did not finish successfully"
+                        self.result_container['done'] = True
+                
+                def speechRecognitionTask_didHypothesizeTranscription_(self, task, transcription):
+                    # Optional: handle partial results
+                    pass
+            
+            _macos_recognition_delegate_class = RecognitionDelegate
+        except ImportError:
+            pass
+    return _macos_recognition_delegate_class
+
 
 def _get_whisper_model(model_name: str = "base"):
     """Get or load the Whisper model."""
@@ -36,6 +78,151 @@ def _get_whisper_model(model_name: str = "base"):
         except ImportError:
             raise ImportError("openai-whisper not installed. Install with: pip install openai-whisper")
     return _whisper_model
+
+
+def _transcribe_macos(timeout: Optional[float] = None) -> str:
+    """Transcribe using macOS native speech recognition via Speech framework."""
+    try:
+        from Speech import SFSpeechRecognizer, SFSpeechAudioBufferRecognitionRequest, SFSpeechRecognitionTask
+        from AVFoundation import AVAudioEngine, AVAudioSession, AVAudioSessionCategoryRecord
+        from Foundation import NSLocale
+        import objc
+    except ImportError:
+        raise ImportError("PyObjC not installed. Install with: pip install pyobjc")
+    
+    print("\n🎤 Listening... (speak now, press Enter when done)")
+    
+    # Record audio using sounddevice (simpler than AVAudioEngine)
+    sample_rate = 16000
+    audio_queue = []
+    recording = threading.Event()
+    recording.set()
+    
+    def audio_callback(indata, frames, time, status):
+        """Callback for audio recording."""
+        if recording.is_set():
+            audio_queue.append(indata.copy())
+    
+    # Start recording
+    stream = sd.InputStream(
+        samplerate=sample_rate,
+        channels=1,
+        dtype=np.float32,
+        callback=audio_callback
+    )
+    
+    stream.start()
+    
+    # Wait for Enter key or timeout
+    try:
+        if timeout:
+            time.sleep(timeout)
+        else:
+            input()  # Wait for Enter
+    except (EOFError, KeyboardInterrupt):
+        pass
+    
+    # Stop recording
+    recording.clear()
+    stream.stop()
+    stream.close()
+    
+    if not audio_queue:
+        print("   (No audio recorded)")
+        return ""
+    
+    audio = np.concatenate(audio_queue, axis=0)
+    print("   Processing with macOS Speech Recognition...")
+    
+    # Convert to format Speech framework expects
+    # Speech framework needs AVAudioFormat, so we'll use a workaround
+    # Actually, let's use a simpler approach - save to temp file and use SFSpeechURLRecognitionRequest
+    
+    import tempfile
+    import wave
+    
+    # Save audio to temporary WAV file
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+        tmp_path = tmp_file.name
+        
+        # Convert float32 to int16
+        audio_int16 = (audio * 32767).astype(np.int16)
+        
+        # Write WAV file
+        with wave.open(tmp_path, 'wb') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_int16.tobytes())
+        
+        try:
+            # Use Speech framework to recognize
+            from Foundation import NSLocale, NSURL, NSObject
+            from Speech import SFSpeechURLRecognitionRequest, SFSpeechRecognitionTask
+            
+            locale = NSLocale.localeWithLocaleIdentifier_("en-US")
+            recognizer = SFSpeechRecognizer.alloc().initWithLocale_(locale)
+            
+            if not recognizer.isAvailable():
+                print("   macOS Speech Recognition is not available")
+                return ""
+            
+            url = NSURL.fileURLWithPath_(tmp_path)
+            request = SFSpeechURLRecognitionRequest.alloc().initWithURL_(url)
+            
+            result_container = {'text': None, 'done': False, 'error': None}
+            
+            # Get delegate class (defined at module level to avoid redefinition)
+            DelegateClass = _get_macos_recognition_delegate_class()
+            if DelegateClass is None:
+                raise ImportError("PyObjC not available")
+            
+            delegate = DelegateClass.alloc().initWithResultContainer_(result_container)
+            task = recognizer.recognitionTaskWithRequest_delegate_(request, delegate)
+            
+            # Wait for recognition to complete
+            from Cocoa import NSRunLoop, NSDefaultRunLoopMode
+            from Foundation import NSDate
+            
+            start_time = time.time()
+            timeout_seconds = timeout if timeout else 10.0
+            
+            while not result_container['done']:
+                if (time.time() - start_time) > timeout_seconds:
+                    task.cancel()
+                    break
+                # Process run loop events - convert Python time to NSDate
+                future_time = time.time() + 0.1
+                ns_date = NSDate.dateWithTimeIntervalSince1970_(future_time)
+                NSRunLoop.currentRunLoop().runMode_beforeDate_(
+                    NSDefaultRunLoopMode,
+                    ns_date
+                )
+                time.sleep(0.05)
+            
+            # Clean up
+            os.unlink(tmp_path)
+            
+            if result_container['error']:
+                print(f"   Error: {result_container['error']}")
+                return ""
+            
+            if result_container['text']:
+                text = result_container['text']
+                print(f"   Heard: '{text}'")
+                return text.strip()
+            else:
+                print("   (No speech detected)")
+                return ""
+                
+        except Exception as e:
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+            print(f"   Error with macOS speech recognition: {e}")
+            raise
 
 
 def _get_sphinx_recognizer():
@@ -164,31 +351,24 @@ def transcribe_once(timeout: Optional[float] = None, phrase_time_limit: Optional
     """
     Record audio from microphone and transcribe to text.
     
-    Uses Whisper by default (better accuracy), falls back to Sphinx if Whisper unavailable.
+    Uses macOS native speech recognition by default on macOS (best performance).
+    Falls back to Whisper or Sphinx if macOS native unavailable.
     Can be configured via VOICE_AGENT_STT_ENGINE environment variable.
     
     Args:
         timeout: Maximum seconds to wait for speech to start (None = no timeout)
-        phrase_time_limit: Maximum seconds for a phrase (None = no limit, Whisper only)
+        phrase_time_limit: Maximum seconds for a phrase (None = no limit, Whisper/macOS only)
     
     Returns:
         Transcribed text as a string
     """
     engine = STT_ENGINE.lower()
     
-    if engine == "whisper":
-        try:
-            return _transcribe_whisper(timeout=timeout)
-        except ImportError as e:
-            print(f"Warning: {e}")
-            print("Falling back to Sphinx...")
-            return _transcribe_sphinx(timeout=timeout, phrase_time_limit=phrase_time_limit)
+    if engine == "macos":
+        return _transcribe_macos(timeout=timeout)
+    elif engine == "whisper":
+        return _transcribe_whisper(timeout=timeout)
     elif engine == "sphinx":
         return _transcribe_sphinx(timeout=timeout, phrase_time_limit=phrase_time_limit)
     else:
-        print(f"Warning: Unknown STT engine '{engine}', using Whisper")
-        try:
-            return _transcribe_whisper(timeout=timeout)
-        except ImportError:
-            print("Falling back to Sphinx...")
-            return _transcribe_sphinx(timeout=timeout, phrase_time_limit=phrase_time_limit)
+        raise ValueError(f"Unknown STT engine '{engine}'. Use 'macos', 'whisper', or 'sphinx'")

@@ -24,12 +24,10 @@ A Python-based voice window agent that allows you to control macOS application w
 pip install -r requirements.txt
 ```
 
-**Note**: Whisper requires Python 3.13 or earlier (Python 3.14 has numba compatibility issues). If using Python 3.14, the agent will automatically fall back to Sphinx.
-
 This installs:
 - `openai` - For LLM API client
-- `openai-whisper` - For high-quality speech-to-text (default, recommended)
-- `sounddevice` - For microphone access (used by Whisper)
+- `pyobjc` - For macOS native speech recognition (default on macOS, best performance)
+- `sounddevice` - For microphone access
 - `numpy` - For audio processing
 - `SpeechRecognition` - For Sphinx speech recognition (fallback)
 - `pyaudio` - For microphone access (used by Sphinx)
@@ -48,8 +46,7 @@ The agent can be configured via environment variables:
 
 - `VOICE_AGENT_LLM_ENDPOINT`: URL of your local LLM endpoint (default: `http://192.168.1.198:10000/v1`)
 - `VOICE_AGENT_LLM_MODEL`: Model name to use (default: `qwen-30b`)
-- `VOICE_AGENT_STT_ENGINE`: Speech-to-text engine - `whisper` (default) or `sphinx`
-- `VOICE_AGENT_WHISPER_MODEL`: Whisper model size - `tiny`, `base` (default), `small`, `medium`, `large`
+- `VOICE_AGENT_STT_ENGINE`: Speech-to-text engine - `macos` (default on macOS), `whisper`, or `sphinx`
 
 Example:
 ```bash
@@ -73,14 +70,12 @@ python3 -m voice_agent.main
 
 The agent will:
 1. Listen to your voice command via microphone
-2. Transcribe your speech using Whisper (default) or Sphinx (fallback)
+2. Transcribe your speech using macOS native Speech Recognition (default on macOS, best performance)
 3. Get context about running and installed apps
 4. Use AI to parse your intent and extract the exact app name
 5. Execute the appropriate AppleScript command
 
-**Note**: Uses offline speech recognition - no API keys, no internet connection, and no cloud services required!
-
-**First run with Whisper**: The first time you run with Whisper, it will download the model (~150MB for base model). This only happens once.
+**Note**: Uses offline speech recognition - no API keys, no internet connection, and no cloud services required! macOS native speech recognition provides the best performance and accuracy on macOS.
 
 ## Project Structure
 
@@ -88,7 +83,7 @@ The agent will:
 voice_agent/
   __init__.py          # Package initialization
   main.py              # Entry point with main loop
-  stt.py               # Speech-to-text abstraction (Whisper/Sphinx)
+  stt.py               # Speech-to-text abstraction (macOS native/Whisper/Sphinx)
   ai_agent.py          # AI client for intent parsing
   window_control.py    # AppleScript helpers for window control
   config.py            # Configuration (LLM endpoint, etc.)
@@ -100,7 +95,7 @@ On macOS, you'll need to grant microphone permissions to Terminal (or your Pytho
 1. System Preferences > Security & Privacy > Privacy > Microphone
 2. Enable Terminal (or your IDE/terminal app)
 
-**Whisper**: Speak your command, then press Enter when done.
+**macOS native / Whisper**: Speak your command, then press Enter when done.
 **Sphinx**: The agent will automatically detect when you start and stop speaking.
 
 ## How It Works
