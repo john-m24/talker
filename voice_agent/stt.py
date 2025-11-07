@@ -294,8 +294,30 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
                 print("   macOS Speech Recognition is not available")
                 return ""
             
+            # Check if on-device recognition is supported
+            supports_on_device = recognizer.supportsOnDeviceRecognition()
+            if supports_on_device:
+                print("   ✓ On-device recognition available (faster, private)")
+            else:
+                print("   ⚠️  On-device recognition not available for this locale, may use cloud")
+            
             url = NSURL.fileURLWithPath_(tmp_path)
             request = SFSpeechURLRecognitionRequest.alloc().initWithURL_(url)
+            
+            # Force on-device recognition if supported
+            if supports_on_device:
+                try:
+                    # Try to set requiresOnDeviceRecognition property
+                    # This ensures recognition happens on-device only
+                    request.setRequiresOnDeviceRecognition_(True)
+                    print("   Using on-device recognition only")
+                except AttributeError:
+                    # Fallback: try direct property access
+                    try:
+                        request.requiresOnDeviceRecognition = True
+                        print("   Using on-device recognition only")
+                    except:
+                        print("   On-device supported but couldn't force it (may still use cloud)")
             
             result_container = {'text': None, 'done': False, 'error': None}
             
@@ -318,8 +340,8 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
             from Foundation import NSDate
             
             start_time = time.time()
-            timeout_seconds = timeout if timeout else 15.0  # Increased timeout
-            max_iterations = int(timeout_seconds * 20)  # Safety limit
+            timeout_seconds = timeout if timeout else 5.0  # Reduced timeout for on-device (faster)
+            max_iterations = int(timeout_seconds * 50)  # Increased iterations for faster polling
             iteration = 0
             
             while not result_container['done']:
@@ -339,13 +361,14 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
                     break
                 
                 # Process run loop events - convert Python time to NSDate
-                future_time = time.time() + 0.1
+                # Reduced interval for faster polling with on-device recognition
+                future_time = time.time() + 0.02  # Faster polling for on-device
                 ns_date = NSDate.dateWithTimeIntervalSince1970_(future_time)
                 NSRunLoop.currentRunLoop().runMode_beforeDate_(
                     NSDefaultRunLoopMode,
                     ns_date
                 )
-                time.sleep(0.02)
+                time.sleep(0.01)  # Reduced sleep for faster response
             
             # Clean up
             os.unlink(tmp_path)

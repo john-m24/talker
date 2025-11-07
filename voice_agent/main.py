@@ -1,6 +1,7 @@
 """Main entry point for the voice window agent."""
 
 import sys
+import time
 from .stt import transcribe_once
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps, activate_app
@@ -42,7 +43,10 @@ def main():
     while True:
         try:
             # Get user input
+            start_stt = time.time()
             text = transcribe_once()
+            stt_time = time.time() - start_stt
+            print(f"⏱️  STT (Speech Recognition) took: {stt_time:.2f}s")
             
             if not text:
                 continue
@@ -53,11 +57,18 @@ def main():
                 break
             
             # Get current running apps for context
+            start_apps = time.time()
             running_apps = list_running_apps()
+            apps_time = time.time() - start_apps
+            print(f"⏱️  List apps took: {apps_time:.2f}s")
             
             # Parse intent using AI agent
             print(f"\n📝 Processing: '{text}'...")
+            start_llm = time.time()
             intent = agent.parse_intent(text, running_apps, installed_apps)
+            llm_time = time.time() - start_llm
+            print(f"⏱️  LLM (Intent Parsing) took: {llm_time:.2f}s")
+            print(f"⏱️  Total processing time: {stt_time + apps_time + llm_time:.2f}s\n")
             
             # Execute command
             intent_type = intent.get("type", "list_apps")
