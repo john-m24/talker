@@ -335,40 +335,41 @@ def _transcribe_macos(timeout: Optional[float] = None) -> str:
             
             task = recognizer.recognitionTaskWithRequest_delegate_(request, delegate)
             
-            # Wait for recognition to complete
+            # Wait for recognition to complete - delegate will signal when done
             from Cocoa import NSRunLoop, NSDefaultRunLoopMode
             from Foundation import NSDate
             
+            # No timeout - just wait for delegate to signal completion
+            # The delegate callbacks will set result_container['done'] = True
+            # Only use timeout if explicitly provided (for safety in edge cases)
             start_time = time.time()
-            timeout_seconds = timeout if timeout else 5.0  # Reduced timeout for on-device (faster)
-            max_iterations = int(timeout_seconds * 50)  # Increased iterations for faster polling
-            iteration = 0
+            safety_timeout = 60.0  # Long safety timeout (60s) to prevent infinite hangs
             
             while not result_container['done']:
-                iteration += 1
                 elapsed = time.time() - start_time
                 
-                if elapsed > timeout_seconds:
+                # Check explicit timeout if provided
+                if timeout and elapsed > timeout:
                     task.cancel()
                     result_container['done'] = True
-                    result_container['error'] = f"Recognition timeout after {timeout_seconds:.1f}s"
+                    result_container['error'] = f"Recognition timeout after {timeout:.1f}s"
                     break
                 
-                if iteration > max_iterations:
+                # Safety timeout to prevent infinite hangs (only if no explicit timeout)
+                if not timeout and elapsed > safety_timeout:
                     task.cancel()
                     result_container['done'] = True
-                    result_container['error'] = "Recognition loop exceeded max iterations"
+                    result_container['error'] = f"Recognition safety timeout after {safety_timeout:.1f}s"
                     break
                 
                 # Process run loop events - convert Python time to NSDate
-                # Reduced interval for faster polling with on-device recognition
-                future_time = time.time() + 0.02  # Faster polling for on-device
+                future_time = time.time() + 0.1  # Check every 100ms
                 ns_date = NSDate.dateWithTimeIntervalSince1970_(future_time)
                 NSRunLoop.currentRunLoop().runMode_beforeDate_(
                     NSDefaultRunLoopMode,
                     ns_date
                 )
-                time.sleep(0.01)  # Reduced sleep for faster response
+                time.sleep(0.05)  # Small sleep to avoid busy waiting
             
             # Clean up
             os.unlink(tmp_path)

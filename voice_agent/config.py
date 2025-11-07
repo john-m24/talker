@@ -33,7 +33,7 @@ STT_ENGINE = _default_stt
 # Whisper model size: "tiny", "base", "small", "medium", "large"
 WHISPER_MODEL = os.getenv("VOICE_AGENT_WHISPER_MODEL", "medium")
 # Silence duration threshold for automatic speech end detection (in seconds)
-SILENCE_DURATION = float(os.getenv("VOICE_AGENT_SILENCE_DURATION", "0.5"))
+SILENCE_DURATION = float(os.getenv("VOICE_AGENT_SILENCE_DURATION", "0.75"))
 
 # Monitor coordinates for multi-monitor window placement
 # Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
