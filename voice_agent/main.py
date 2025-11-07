@@ -4,7 +4,7 @@ import sys
 import time
 from .stt import transcribe_once
 from .ai_agent import AIAgent
-from .window_control import list_running_apps, list_installed_apps, activate_app, place_app_on_monitor
+from .window_control import list_running_apps, list_installed_apps, activate_app, place_app_on_monitor, show_apps_list
 from .tab_control import list_chrome_tabs, switch_to_chrome_tab
 from .clarification import show_clarification_dialog
 from .config import LLM_ENDPOINT, STT_ENGINE
@@ -114,13 +114,8 @@ def main():
             intent_type = intent.get("type", "list_apps")
             
             if intent_type == "list_apps":
-                print("\nCurrently running applications:")
-                if running_apps:
-                    for i, app in enumerate(running_apps, 1):
-                        print(f"  {i}. {app}")
-                else:
-                    print("  (No applications running)")
-                print()
+                show_apps_list(running_apps)
+                print()  # Keep a blank line for console output consistency
             
             elif intent_type == "list_tabs":
                 print("\nOpen Chrome tabs:")

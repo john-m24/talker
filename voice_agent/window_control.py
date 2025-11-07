@@ -59,6 +59,76 @@ def list_installed_apps() -> List[str]:
         return []
 
 
+def _escape_applescript_string(text: str) -> str:
+    """
+    Escape special characters for AppleScript string literals.
+    
+    Args:
+        text: String to escape
+        
+    Returns:
+        Escaped string safe for use in AppleScript
+    """
+    # Escape backslashes first (must be first)
+    text = text.replace("\\", "\\\\")
+    # Escape double quotes
+    text = text.replace('"', '\\"')
+    # Escape newlines
+    text = text.replace("\n", "\\n")
+    # Escape carriage returns
+    text = text.replace("\r", "\\r")
+    # Escape tabs
+    text = text.replace("\t", "\\t")
+    return text
+
+
+def show_apps_list(apps: List[str]) -> bool:
+    """
+    Display a list of applications in a macOS dialog pop-up on screen.
+    
+    Args:
+        apps: List of application names to display
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not apps:
+            message = "No applications are currently running."
+        else:
+            # Format apps list with numbers
+            apps_text = "\n".join([f"{i}. {app}" for i, app in enumerate(apps, 1)])
+            message = f"Currently running applications:\n\n{apps_text}"
+        
+        # Escape special characters for AppleScript
+        escaped_message = _escape_applescript_string(message)
+        
+        # Create AppleScript to show dialog pop-up
+        script = f'''
+        tell application "System Events"
+            activate
+        end tell
+        
+        display dialog "{escaped_message}" buttons {{"OK"}} default button "OK" with title "Running Applications"
+        '''
+        
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode == 0:
+            return True
+        else:
+            print(f"Error showing apps list dialog: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"Error showing apps list dialog: {e}")
+        return False
+
+
 def activate_app(app_name: str) -> bool:
     """
     Activate (bring to front) an application by name.
