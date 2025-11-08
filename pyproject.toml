@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "macos-voice-window-agent"
+version = "0.1.0"
+description = "A Python-based voice window agent for controlling macOS application windows using natural language commands"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "macOS Voice Window Agent Contributors"}
+]
+keywords = ["macos", "voice", "window", "control", "automation", "speech-recognition", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Desktop Environment",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "openai>=1.0.0",
+    "mlx-whisper",
+    "pyobjc",
+    "sounddevice",
+    "numpy",
+    "SpeechRecognition",
+    "pyaudio",
+    "pocketsphinx",
+    "pynput>=1.7.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/talk-to-computer"
+Documentation = "https://github.com/your-username/talk-to-computer#readme"
+Repository = "https://github.com/your-username/talk-to-computer"
+Issues = "https://github.com/your-username/talk-to-computer/issues"
+
+[project.scripts]
+voice-agent = "voice_agent.main:main"
+
+[tool.setuptools]
+packages = ["voice_agent", "voice_agent.commands", "voice_agent.stt", "voice_agent.stt.engines", "voice_agent.utils"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.txt"]
+
+[tool.black]
+line-length = 100
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311', 'py312', 'py313']
+
+[tool.mypy]
+python_version = "3.7"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
