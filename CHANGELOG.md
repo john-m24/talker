@@ -28,5 +28,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Running and installed app detection
 - Offline speech recognition (no cloud services required)
 
-[0.1.0]: https://github.com/your-username/talker/releases/tag/v0.1.0
+[0.1.0]: https://github.com/john-m24/talker/releases/tag/v0.1.0
 

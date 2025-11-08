@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/your-username/talker.git
+   git clone https://github.com/john-m24/talker.git
    cd talker
    ```
 3. **Create a virtual environment**:
