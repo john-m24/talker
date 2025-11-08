@@ -174,6 +174,25 @@ On macOS, you'll need to grant microphone permissions to Terminal (or your Pytho
    - Preset name (for `activate_preset`)
 4. **Execution**: AppleScript commands are executed via `osascript` to control windows, or preset commands execute multiple app placements
 
+## Planned Features
+
+### High Priority
+- **Window resizing commands**: "Resize Chrome to half screen", "Make this window bigger"
+- **Multi-browser support**: Extend tab switching to Firefox, Safari, and Edge
+- **Window snapping**: "Snap to left", "Tile windows", "Cascade all"
+- **Custom voice aliases**: Define shortcuts for frequently used commands
+- **Dynamic preset creation**: "Save current layout as [name]"
+
+### Medium Priority
+- **macOS Spaces integration**: Control and switch between desktop spaces
+- **Voice feedback**: Spoken confirmations for executed commands
+- **Command history**: Review and repeat recent commands
+- **Window state management**: Undo last action, restore previous window positions
+- **Auto-detect monitors**: Automatic multi-monitor configuration detection
+- **Multi-OS support**: Extend functionality to Linux and Windows
+
+Many more features to be added!
+
 ## Troubleshooting
 
 - **"Error initializing AI agent"**: Check that your LLM endpoint is running and accessible
