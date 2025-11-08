@@ -54,10 +54,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/talker"
-Documentation = "https://github.com/your-username/talker#readme"
-Repository = "https://github.com/your-username/talker"
-Issues = "https://github.com/your-username/talker/issues"
+Homepage = "https://github.com/john-m24/talker"
+Documentation = "https://github.com/john-m24/talker#readme"
+Repository = "https://github.com/john-m24/talker"
+Issues = "https://github.com/john-m24/talker/issues"
 
 [project.scripts]
 talker = "voice_agent.main:main"

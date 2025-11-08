@@ -39,13 +39,13 @@ This installs:
 brew install portaudio
 ```
 
-3. Ensure your local LLM server is running and accessible at the configured endpoint (default: `http://192.168.1.198:10000/v1`)
+3. Ensure your local LLM server is running and accessible at the configured endpoint (default: `http://localhost:8000/v1`)
 
 ## Configuration
 
 The agent can be configured via environment variables:
 
-- `VOICE_AGENT_LLM_ENDPOINT`: URL of your local LLM endpoint (default: `http://192.168.1.198:10000/v1`)
+- `VOICE_AGENT_LLM_ENDPOINT`: URL of your local LLM endpoint (default: `http://localhost:8000/v1`)
 - `VOICE_AGENT_LLM_MODEL`: Model name to use (default: `qwen-30b`)
 - `VOICE_AGENT_STT_ENGINE`: Speech-to-text engine - `macos` (default on macOS), `whisper`, or `sphinx`
 - `VOICE_AGENT_PRESETS_FILE`: Path to presets configuration file (optional, see Presets section below)

@@ -11,7 +11,7 @@ class Config:
     def __init__(self):
         """Initialize configuration from environment variables."""
         # Local LLM endpoint configuration
-        self.llm_endpoint = os.getenv("VOICE_AGENT_LLM_ENDPOINT", "http://192.168.1.198:10000/v1")
+        self.llm_endpoint = os.getenv("VOICE_AGENT_LLM_ENDPOINT", "http://localhost:8000/v1")
         self.llm_model = os.getenv("VOICE_AGENT_LLM_MODEL", "qwen-30b")
         
         # Speech-to-text engine: "macos", "whisper" (default), or "sphinx"
