@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "macos-voice-window-agent"
+name = "talker"
 version = "0.1.0"
 description = "A Python-based voice window agent for controlling macOS application windows using natural language commands"
 readme = "README.md"
 requires-python = ">=3.7"
 license = {text = "MIT"}
 authors = [
-    {name = "macOS Voice Window Agent Contributors"}
+    {name = "Talker Contributors"}
 ]
 keywords = ["macos", "voice", "window", "control", "automation", "speech-recognition", "ai"]
 classifiers = [
@@ -54,13 +54,13 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/talk-to-computer"
-Documentation = "https://github.com/your-username/talk-to-computer#readme"
-Repository = "https://github.com/your-username/talk-to-computer"
-Issues = "https://github.com/your-username/talk-to-computer/issues"
+Homepage = "https://github.com/your-username/talker"
+Documentation = "https://github.com/your-username/talker#readme"
+Repository = "https://github.com/your-username/talker"
+Issues = "https://github.com/your-username/talker/issues"
 
 [project.scripts]
-voice-agent = "voice_agent.main:main"
+talker = "voice_agent.main:main"
 
 [tool.setuptools]
 packages = ["voice_agent", "voice_agent.commands", "voice_agent.stt", "voice_agent.stt.engines", "voice_agent.utils"]

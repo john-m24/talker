@@ -18,7 +18,7 @@ from .presets import load_presets, list_presets
 def print_help():
     """Print welcome message and help text."""
     print("=" * 60)
-    print("macOS Voice Window Agent")
+    print("Talker")
     print("=" * 60)
     print(f"\n⌨️  Hotkey: Press {HOTKEY} to activate (works from any window)")
     print("\n🎤 Voice Commands:")

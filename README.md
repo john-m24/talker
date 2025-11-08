@@ -1,4 +1,4 @@
-# macOS Voice Window Agent
+# Talker
 
 A Python-based voice window agent that allows you to control macOS application windows using natural language commands. The agent uses a local AI model to parse your commands and AppleScript to control windows.
 

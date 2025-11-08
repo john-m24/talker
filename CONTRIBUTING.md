@@ -1,4 +1,4 @@
-# Contributing to macOS Voice Window Agent
+# Contributing to Talker
 
 Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to the project.
 
@@ -7,8 +7,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/your-username/talk-to-computer.git
-   cd talk-to-computer
+   git clone https://github.com/your-username/talker.git
+   cd talker
    ```
 3. **Create a virtual environment**:
    ```bash
