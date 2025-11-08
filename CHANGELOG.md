@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Text input mode with popup dialog
+- Support for typing commands instead of voice input
+- Configurable text mode hotkey (`VOICE_AGENT_TEXT_HOTKEY`, default: `ctrl+alt`)
+- Both voice and text modes available simultaneously
+
 ## [0.1.0] - 2024-XX-XX
 
 ### Added

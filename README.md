@@ -48,6 +48,8 @@ The agent can be configured via environment variables:
 - `VOICE_AGENT_LLM_ENDPOINT`: URL of your local LLM endpoint (default: `http://localhost:8000/v1`)
 - `VOICE_AGENT_LLM_MODEL`: Model name to use (default: `qwen-30b`)
 - `VOICE_AGENT_STT_ENGINE`: Speech-to-text engine - `macos` (default on macOS), `whisper`, or `sphinx`
+- `VOICE_AGENT_HOTKEY`: Hotkey for voice mode (default: `cmd+alt`)
+- `VOICE_AGENT_TEXT_HOTKEY`: Hotkey for text mode (default: `ctrl+alt`)
 - `VOICE_AGENT_PRESETS_FILE`: Path to presets configuration file (optional, see Presets section below)
 
 Example:
@@ -119,15 +121,9 @@ Run the agent:
 python3 -m voice_agent.main
 ```
 
-### Example Commands
+### Voice Mode
 
-- **Focus an app**: "Bring Docker to view", "Focus Chrome", "Show Slack"
-- **Place app on monitor**: "Put Chrome on left monitor", "Move Cursor to right screen", "Place Terminal on main monitor and maximize"
-- **List apps**: "List apps", "What's running", "Show me my open applications"
-- **Activate preset**: "Activate code space", "code space", "Set up development", "Load browsing"
-- **Switch Chrome tabs**: "Switch to Gmail", "Go to tab 3", "List tabs"
-- **Close app/tab**: "Close Chrome", "Close tab 2", "Quit Docker"
-- **Quit**: "quit", "exit", or press Ctrl+C
+Press `cmd+alt` (or your configured `VOICE_AGENT_HOTKEY`) to activate voice mode. Hold the hotkey while speaking, then release to process your command.
 
 The agent will:
 1. Listen to your voice command via microphone
@@ -137,6 +133,22 @@ The agent will:
 5. Execute the appropriate AppleScript command
 
 **Note**: Uses offline speech recognition - no API keys, no internet connection, and no cloud services required! macOS native speech recognition provides the best performance and accuracy on macOS.
+
+### Text Mode
+
+Press `ctrl+alt` (or your configured `VOICE_AGENT_TEXT_HOTKEY`) to open a text input dialog. Type your command and press Enter to submit, or press Esc/Cancel to cancel.
+
+Both voice and text modes work simultaneously - use whichever is more convenient!
+
+### Example Commands
+
+- **Focus an app**: "Bring Docker to view", "Focus Chrome", "Show Slack"
+- **Place app on monitor**: "Put Chrome on left monitor", "Move Cursor to right screen", "Place Terminal on main monitor and maximize"
+- **List apps**: "List apps", "What's running", "Show me my open applications"
+- **Activate preset**: "Activate code space", "code space", "Set up development", "Load browsing"
+- **Switch Chrome tabs**: "Switch to Gmail", "Go to tab 3", "List tabs"
+- **Close app/tab**: "Close Chrome", "Close tab 2", "Quit Docker"
+- **Quit**: "quit", "exit", or press Ctrl+C
 
 ## Project Structure
 
@@ -165,7 +177,7 @@ On macOS, you'll need to grant microphone permissions to Terminal (or your Pytho
 
 ## How It Works
 
-1. **Input**: User speaks command into microphone
+1. **Input**: User provides command via voice (hold hotkey and speak) or text (press text hotkey and type)
 2. **Context Gathering**: Agent collects list of running apps, installed apps, Chrome tabs (if applicable), and available presets
 3. **AI Parsing**: Local LLM parses the command with context to extract:
    - Intent type (`list_apps`, `focus_app`, `place_app`, `activate_preset`, `switch_tab`, `close_app`, `close_tab`, etc.)
