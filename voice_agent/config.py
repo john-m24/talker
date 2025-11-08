@@ -47,6 +47,9 @@ class Config:
         # Global hotkey for triggering voice commands (e.g., 'cmd+alt', 'cmd+shift+v')
         self.hotkey = os.getenv("VOICE_AGENT_HOTKEY", "cmd+alt")
         
+        # Global hotkey for triggering text commands (e.g., 'ctrl+alt', 'ctrl+option')
+        self.text_hotkey = os.getenv("VOICE_AGENT_TEXT_HOTKEY", "ctrl+alt")
+        
         # Monitor coordinates for multi-monitor window placement
         # Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
         # Coordinates are absolute screen coordinates
@@ -111,6 +114,7 @@ STT_ENGINE = _config.stt_engine
 WHISPER_MODEL = _config.whisper_model
 SILENCE_DURATION = _config.silence_duration
 HOTKEY = _config.hotkey
+TEXT_HOTKEY = _config.text_hotkey
 MONITORS = _config.monitors
 
 __all__ = [
@@ -121,5 +125,6 @@ __all__ = [
     "WHISPER_MODEL",
     "SILENCE_DURATION",
     "HOTKEY",
+    "TEXT_HOTKEY",
     "MONITORS",
 ]
