@@ -73,10 +73,6 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
         
         raw_output = stdout if stdout else None
         
-        # Debug: Show raw output for troubleshooting
-        if raw_output:
-            print(f"DEBUG: Raw AppleScript output: {raw_output[:200]}...")
-        
         # Parse the result
         # AppleScript returns either:
         # - With braces: {1, "Title", "URL", 1, 1, true}, {2, "Title", "URL", 1, 2, false}
@@ -188,12 +184,6 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
                                 continue
                         else:
                             print(f"Warning: Tab entry has {len(parts)} parts, expected 6: {entry[:100]}...")
-        
-        # Debug: Show how many tabs were parsed
-        if tabs:
-            print(f"DEBUG: Parsed {len(tabs)} tab(s) from AppleScript output")
-        else:
-            print(f"DEBUG: No tabs parsed from output: {raw_output[:200] if raw_output else 'None'}...")
         
         return tabs, raw_output
     except Exception as e:
