@@ -43,6 +43,7 @@ dependencies = [
     "pyaudio",
     "pocketsphinx",
     "pynput>=1.7.6",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
