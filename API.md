@@ -64,7 +64,10 @@ The system exposes a set of operations that can be called via structured JSON. T
 **Description:** Bring an application to the front (launches if not running)
 
 **Parameters:**
-- `app_name` (string, required): Exact application name from running/installed apps
+- `app_name` (string, required): Exact application name from running/installed apps (non-empty string)
+
+**Type Definitions:**
+- `string`: Non-empty string
 
 **Example:**
 ```json
@@ -80,9 +83,14 @@ The system exposes a set of operations that can be called via structured JSON. T
 **Description:** Move an application window to a specific monitor
 
 **Parameters:**
-- `app_name` (string, required): Exact application name
-- `monitor` (string, required): One of "main", "right", "left"
-- `maximize` (boolean, optional): Whether to maximize the window
+- `app_name` (string, required): Exact application name (non-empty string)
+- `monitor` (enum, required): One of "main", "right", "left"
+- `maximize` (boolean, optional): Whether to maximize the window (default: false)
+
+**Type Definitions:**
+- `string`: Non-empty string
+- `enum`: One of the specified values
+- `boolean`: true or false
 
 **Example:**
 ```json
@@ -100,7 +108,10 @@ The system exposes a set of operations that can be called via structured JSON. T
 **Description:** Quit/close an application completely
 
 **Parameters:**
-- `app_name` (string, required): Exact application name
+- `app_name` (string, required): Exact application name (non-empty string)
+
+**Type Definitions:**
+- `string`: Non-empty string
 
 **Example:**
 ```json
@@ -130,7 +141,10 @@ The system exposes a set of operations that can be called via structured JSON. T
 **Description:** Switch to a specific Chrome tab
 
 **Parameters:**
-- `tab_index` (integer, required): Global tab index (1-based, across all windows)
+- `tab_index` (integer, required): Global tab index (1-based, across all windows, positive integer)
+
+**Type Definitions:**
+- `integer`: Positive integer (1-based indexing)
 
 **Example:**
 ```json
@@ -148,14 +162,16 @@ The system exposes a set of operations that can be called via structured JSON. T
 **Description:** Close one or more Chrome tabs
 
 **Parameters:**
-- `tab_index` (integer, optional): Single tab index
-- `tab_indices` (array of integers, optional): Multiple tab indices
+- `tab_indices` (array<integer>, required): Array of global tab indices (1-based, across all windows). For single tab, use array with one element: `[3]`
+
+**Type Definitions:**
+- `array<integer>`: Array of integers, non-empty, all values must be positive integers (1-based)
 
 **Example (single tab):**
 ```json
 {
   "type": "close_tab",
-  "tab_index": 3
+  "tab_indices": [3]
 }
 ```
 
@@ -167,7 +183,7 @@ The system exposes a set of operations that can be called via structured JSON. T
 }
 ```
 
-**Note:** LLM must match user intent ("all reddit tabs", "tabs 1, 3, and 5", etc.) to specific tab indices.
+**Note:** LLM must match user intent ("all reddit tabs", "tabs 1, 3, and 5", etc.) to specific tab indices. System will optimize execution (close from highest to lowest to avoid index shifting).
 
 ---
 
@@ -175,7 +191,10 @@ The system exposes a set of operations that can be called via structured JSON. T
 **Description:** Activate a named preset window layout
 
 **Parameters:**
-- `preset_name` (string, required): Exact preset name from available presets
+- `preset_name` (string, required): Exact preset name from available presets (non-empty string)
+
+**Type Definitions:**
+- `string`: Non-empty string
 
 **Example:**
 ```json
