@@ -7,7 +7,7 @@ from .stt import transcribe_while_held
 from .stt.factory import set_cached_engine
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps
-from .tab_control import list_chrome_tabs
+from .tab_control import list_chrome_tabs_with_content
 from .clarification import show_clarification_dialog
 from .text_input import show_text_input_dialog
 from .commands import CommandExecutor
@@ -67,6 +67,7 @@ def handle_clarification(
     running_apps: list,
     installed_apps: list,
     chrome_tabs: Optional[list],
+    chrome_tabs_raw: Optional[str],
     available_presets: Optional[list] = None
 ) -> Tuple[str, dict]:
     """
@@ -111,7 +112,7 @@ def handle_clarification(
         
         # Re-parse intent with corrected text
         start_llm = time.time()
-        intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs, available_presets=available_presets)
+        intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, available_presets=available_presets)
         llm_time = time.time() - start_llm
         print(f"⏱️  LLM (Re-parsing) took: {llm_time:.2f}s\n")
     else:
@@ -127,6 +128,7 @@ def process_command(
     running_apps: list,
     installed_apps: list,
     chrome_tabs: Optional[list],
+    chrome_tabs_raw: Optional[str],
     available_presets: Optional[list],
     command_executor: CommandExecutor
 ) -> bool:
@@ -139,6 +141,7 @@ def process_command(
         running_apps: List of running apps
         installed_apps: List of installed apps
         chrome_tabs: List of Chrome tabs (if available)
+        chrome_tabs_raw: Raw AppleScript output for Chrome tabs (if available)
         available_presets: List of available preset names
         command_executor: Command executor instance
         
@@ -149,21 +152,20 @@ def process_command(
     if text.lower() in ["quit", "exit", "q"]:
         return False
     
-    # Get Chrome tabs if Chrome is running (for tab switching context)
-    if chrome_tabs is None and running_apps and "Google Chrome" in running_apps:
-        chrome_tabs = list_chrome_tabs()
+    # Chrome tabs should already be pre-loaded with content from main loop
+    # No need to fetch again here
     
     # Parse intent using AI agent
     print(f"\n📝 Processing: '{text}'...")
     intent_result = time_operation(
         "LLM (Intent Parsing)",
         agent.parse_intent,
-        text, running_apps, installed_apps, chrome_tabs=chrome_tabs, available_presets=available_presets
+        text, running_apps, installed_apps, chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, available_presets=available_presets
     )
     
     # Handle clarification if needed
     text, intent_result = handle_clarification(
-        text, intent_result, agent, running_apps, installed_apps, chrome_tabs, available_presets
+        text, intent_result, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets
     )
     
     if text is None or intent_result is None:
@@ -249,10 +251,11 @@ def main():
             # Get current running apps for context (before waiting for hotkey)
             running_apps = list_running_apps()
             
-            # Get Chrome tabs if Chrome is running (for tab switching context)
+            # Get Chrome tabs with content if Chrome is running (for tab switching context)
             chrome_tabs = None
+            chrome_tabs_raw = None
             if running_apps and "Google Chrome" in running_apps:
-                chrome_tabs = list_chrome_tabs()
+                chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
             
             # Check for voice hotkey press
             voice_pressed = voice_hotkey_listener.wait_for_hotkey(timeout=0.1)
@@ -295,7 +298,7 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, available_presets, command_executor
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
                 )
                 
                 if not should_continue:
@@ -322,7 +325,7 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, available_presets, command_executor
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
                 )
                 
                 if not should_continue:

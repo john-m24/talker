@@ -32,6 +32,7 @@ class AIAgent:
         running_apps: List[str], 
         installed_apps: Optional[List[str]] = None,
         chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None,
+        chrome_tabs_raw: Optional[str] = None,
         available_presets: Optional[List[str]] = None
     ) -> Dict[str, Union[List[Dict], bool, Optional[str]]]:
         """
@@ -41,12 +42,12 @@ class AIAgent:
             text: User's command text
             running_apps: List of currently running applications
             installed_apps: Optional list of installed applications
-            chrome_tabs: Optional list of Chrome tabs with 'index' and 'title' keys
+            chrome_tabs: Optional list of Chrome tabs with 'index', 'title', 'url', 'domain', 'content_summary' keys
             available_presets: Optional list of available preset names
             
         Returns:
             Dictionary with 'commands' array (list of intent dicts), 'needs_clarification', and 'clarification_reason'
-            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index', 'preset_name'
+            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index', 'preset_name', 'content_query'
             Example (single command): {"commands": [{"type": "focus_app", "app_name": "Docker Desktop"}], "needs_clarification": false, "clarification_reason": null}
             Example (multiple commands): {"commands": [{"type": "place_app", "app_name": "Google Chrome", "monitor": "left"}, {"type": "place_app", "app_name": "Cursor", "monitor": "right"}], "needs_clarification": false, "clarification_reason": null}
             Example (preset): {"commands": [{"type": "activate_preset", "preset_name": "code space"}], "needs_clarification": false, "clarification_reason": null}
@@ -75,13 +76,47 @@ class AIAgent:
             )
         
         # Add Chrome tabs context if available
+        # First, include raw AppleScript output for AI to parse
+        if chrome_tabs_raw:
+            context_parts.append(
+                f"Raw Chrome tabs data from AppleScript (parse this to find ALL tabs):\n{chrome_tabs_raw}"
+            )
+            context_parts.append(
+                "IMPORTANT: Parse the raw data above to find ALL tabs. The format is: "
+                "globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, "
+                "nextGlobalIndex, \"nextTitle\", \"nextUrl\", windowIndex, localIndex, isActive, ..."
+            )
+            context_parts.append(
+                "Each tab entry consists of 6 values: globalIndex (1-based across all windows), "
+                "title (quoted string), url (quoted string), windowIndex (1-based), "
+                "localIndex (1-based within window), isActive (true/false)."
+            )
+        
+        # Also include parsed tabs for reference (may be incomplete due to parsing issues)
         if chrome_tabs:
             tabs_info = []
-            for tab in chrome_tabs[:20]:  # Limit to 20 tabs to avoid token limits
-                tabs_info.append(f"Tab {tab['index']}: {tab['title']}")
+            for tab in chrome_tabs:  # Include all tabs since we're using summaries
+                domain = tab.get('domain', 'N/A')
+                title = tab.get('title', 'N/A')
+                url = tab.get('url', '')
+                content_summary = tab.get('content_summary', '')
+                active = " (ACTIVE)" if tab.get('is_active') else ""
+                window = f" [Window {tab.get('window_index', '?')}]" if tab.get('window_index') else ""
+                
+                # Format for AI analysis: clear structure with all information
+                tab_str = f"Tab {tab['index']} [{domain}]{active}{window}"
+                tab_str += f"\n  Title: {title}"
+                if url:
+                    tab_str += f"\n  URL: {url}"
+                if content_summary:
+                    # Include full content summary for AI analysis
+                    content_display = content_summary[:500] + "..." if len(content_summary) > 500 else content_summary
+                    tab_str += f"\n  Content: {content_display}"
+                tabs_info.append(tab_str)
+            
             if tabs_info:
                 context_parts.append(
-                    f"Open Chrome tabs: {'; '.join(tabs_info)}"
+                    f"Parsed Chrome tabs ({len(chrome_tabs)} found - may be incomplete, use raw data above for complete list):\n" + "\n\n".join(tabs_info)
                 )
         
         if installed_apps:
@@ -113,8 +148,9 @@ class AIAgent:
             "- 'app_name': (for focus_app, place_app, and close_app) the exact application name - prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running)",
             "- 'monitor': (for place_app) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
             "- 'maximize': (for place_app, optional boolean) true if user wants to maximize the window, false otherwise",
-            "- 'tab_title': (for switch_tab and close_tab) match keywords from the user's command to the Chrome tab titles",
-            "- 'tab_index': (for switch_tab and close_tab, optional) the tab number if user specifies a number",
+            "- 'tab_index': (for switch_tab and close_tab, REQUIRED when matching) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab",
+            "- 'tab_title': (for switch_tab and close_tab, optional) only use if user explicitly mentions a title, otherwise analyze tabs and return tab_index",
+            "- 'content_query': (for switch_tab and close_tab, optional) only use for reference, but YOU should analyze and return tab_index",
             "- 'preset_name': (for activate_preset) the exact preset name from the available presets list (case-insensitive matching is supported)",
             "",
             "Monitor placement patterns to recognize:",
@@ -129,8 +165,35 @@ class AIAgent:
             "IMPORTANT: focus_app and place_app commands can open apps even if they're not currently running - the system will launch them automatically.",
             "When the user says 'open [App]' or 'launch [App]', use type 'focus_app' - it will launch the app if needed.",
             "If the user wants to place an app on a monitor, use type 'place_app' and extract the monitor name.",
-            "If the user wants to switch tabs, match keywords from their command to the Chrome tab titles.",
-            "For example: 'Gmail' matches 'Gmail - Inbox', 'YouTube' matches 'YouTube - Watch', etc.",
+            "If the user wants to switch tabs, you MUST analyze ALL open tabs and select the best match.",
+            "CRITICAL: You have access to RAW Chrome tabs data from AppleScript. Parse this raw data to find ALL tabs.",
+            "The raw data format is: globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, nextGlobalIndex, \"nextTitle\", ...",
+            "Each tab entry has 6 values separated by commas. Parse ALL entries in the raw data.",
+            "",
+            "You also have parsed tab information (may be incomplete), but ALWAYS use the raw data as the source of truth.",
+            "IMPORTANT: Tab information includes:",
+            "- Tab index (globalIndex - use this in 'tab_index' field)",
+            "- Domain (extracted from URL, e.g., 'reddit.com', 'github.com')",
+            "- URL (full URL of the tab)",
+            "- Title (tab title)",
+            "- Content summary (page content summary - may be available for parsed tabs)",
+            "- Active status (which tab is currently active)",
+            "",
+            "Analyze the user's request and match it against ALL available tab information from the raw data:",
+            "- If user mentions a website name (e.g., 'reddit', 'github', 'youtube'), match against domains and URLs",
+            "- If user mentions content topics (e.g., 'tab with reddit and local AI', 'tab about Python'), match against content summaries",
+            "- If user mentions a tab title, match against titles",
+            "- Consider ALL fields (domain, URL, title, content) when making your decision",
+            "",
+            "Examples:",
+            "- 'switch to reddit' -> Analyze all tabs, find the one with 'reddit.com' in domain/URL, return tab_index",
+            "- 'go to the tab with reddit and local AI' -> Analyze all tabs, find the one with 'reddit' and 'local AI' in content summary, return tab_index",
+            "- 'open github' -> Analyze all tabs, find the one with 'github.com' in domain/URL, return tab_index",
+            "- 'switch to tab about Python' -> Analyze all tabs, find the one with 'Python' in content summary or title, return tab_index",
+            "",
+            "CRITICAL: You MUST return 'tab_index' (the numeric index) when you find a matching tab.",
+            "Do NOT return 'tab_title' or 'content_query' - return the specific 'tab_index' of the matching tab.",
+            "If no matching tab is found, set 'needs_clarification' to true.",
             "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
             "If the user wants to close/quit an app, use type 'close_app' and extract the app name.",
             "Patterns for close_app: 'close [App]', 'quit [App]', 'exit [App]' -> type: 'close_app'.",
