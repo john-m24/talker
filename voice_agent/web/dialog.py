@@ -4,6 +4,7 @@ import threading
 import webbrowser
 import time
 import socket
+import subprocess
 from typing import Optional, List, Dict, Any
 from flask import Flask, render_template_string, request, jsonify
 from ..config import AUTOCOMPLETE_MAX_SUGGESTIONS, WEB_PORT
@@ -122,6 +123,29 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
+        // Resize and center window when it loads (popup mode)
+        window.onload = function() {
+            // Only resize if window was opened in a new tab (not a popup)
+            // Check if we can resize (some browsers restrict this)
+            try {
+                const width = 600;
+                const height = 500;
+                const left = Math.max(0, (screen.width - width) / 2);
+                const top = Math.max(0, (screen.height - height) / 2);
+                
+                // Try to resize and move window
+                window.resizeTo(width, height);
+                window.moveTo(left, top);
+                
+                // Focus the input field
+                document.getElementById('command-input').focus();
+            } catch (e) {
+                // Some browsers restrict window resizing - that's okay
+                // Just focus the input field
+                document.getElementById('command-input').focus();
+            }
+        };
+
         let suggestions = [];
         let selectedIndex = -1;
         let debounceTimer = null;
@@ -249,6 +273,8 @@ HTML_TEMPLATE = """
 """
 
 
+
+
 def _find_available_port(start_port: int, max_attempts: int = 10) -> int:
     """
     Find an available port starting from start_port.
@@ -368,18 +394,72 @@ class WebTextInputDialog:
         # Wait a moment for server to start
         time.sleep(0.5)
         
-        # Open browser
+        # Open browser in popup window (macOS) - centered on screen
+        url = f'http://127.0.0.1:{self.port}'
+        
+        # Window dimensions (keep original small size)
+        window_width = 600
+        window_height = 500
+        
+        # Detect default browser and open in popup window (only one browser)
         try:
-            webbrowser.open(f'http://127.0.0.1:{self.port}')
+            default_browser = webbrowser.get()
+            browser_name = default_browser.name.lower()
+            
+            # Determine which browser to use
+            if 'chrome' in browser_name:
+                browser_app = "Google Chrome"
+            elif 'safari' in browser_name:
+                browser_app = "Safari"
+            else:
+                # For other browsers, just use regular webbrowser.open()
+                browser_app = None
+            
+            if browser_app:
+                # Use AppleScript to open in popup window (centered)
+                script = f'''
+                tell application "{browser_app}"
+                    activate
+                    set newWindow to make new window
+                    set URL of active tab of newWindow to "{url}"
+                    -- Get screen dimensions and center the window
+                    tell application "System Events"
+                        set screenSize to size of desktop
+                        set screenWidth to item 1 of screenSize
+                        set screenHeight to item 2 of screenSize
+                    end tell
+                    set leftPos to (screenWidth - {window_width}) / 2
+                    set topPos to (screenHeight - {window_height}) / 2
+                    set rightPos to leftPos + {window_width}
+                    set bottomPos to topPos + {window_height}
+                    set bounds of newWindow to {{leftPos, topPos, rightPos, bottomPos}}
+                end tell
+                '''
+                result = subprocess.run(
+                    ["osascript", "-e", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode != 0 or result.stderr:
+                    # If AppleScript failed, fall back to regular browser open
+                    webbrowser.open(url)
+            else:
+                # For non-Chrome/Safari browsers, use regular webbrowser.open()
+                webbrowser.open(url)
         except Exception as e:
-            print(f"Warning: Could not open browser: {e}")
-            # Server will still run, user can manually open browser
+            # If anything fails, fall back to regular browser open
+            print(f"Warning: Could not open browser in popup mode: {e}")
+            try:
+                webbrowser.open(url)
+            except Exception as e2:
+                print(f"Warning: Could not open browser: {e2}")
+                # Server will still run, user can manually open browser
         
         # Wait for shutdown event (when user submits/cancels)
-        # Also wait for thread to finish (with timeout as backup)
         self.shutdown_event.wait(timeout=300)  # 5 minute timeout
         
-        # Give a moment for server to shutdown
+        # Give a moment for cleanup
         time.sleep(0.2)
         
         return self.result
