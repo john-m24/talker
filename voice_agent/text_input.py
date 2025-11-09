@@ -1,25 +1,31 @@
-"""Text input dialog for text mode commands."""
+"""Text input dialog for text mode commands with auto-complete."""
 
 import subprocess
 from typing import Optional
 from .utils import escape_applescript_string
 
 
-def show_text_input_dialog() -> Optional[str]:
+def show_text_input_dialog(
+    autocomplete_engine=None,
+    cache_manager=None
+) -> Optional[str]:
     """
-    Show a macOS dialog for text input command.
+    Show text input dialog with auto-complete support.
+    
+    Args:
+        autocomplete_engine: AutocompleteEngine instance (optional, for future use)
+        cache_manager: CacheManager instance (optional, for future use)
     
     Returns:
         The entered text if user submits, or None if cancelled
     """
-    # Build the dialog message
-    message = "Enter your command:"
+    # TODO: Web-based dialog with auto-complete will be implemented in Phase 4
+    # For now, use AppleScript fallback dialog
     
-    # Escape special characters for AppleScript
+    # AppleScript dialog (temporary fallback until web dialog is ready)
+    message = "Enter your command:"
     escaped_message = escape_applescript_string(message)
     
-    # Create AppleScript to show dialog with editable text field
-    # Enter key submits (default button), Esc key cancels
     script = f'''
     tell application "System Events"
         activate
@@ -50,7 +56,6 @@ def show_text_input_dialog() -> Optional[str]:
             if entered_text:
                 return entered_text
             else:
-                # User cancelled
                 return None
         else:
             print(f"Error showing text input dialog: {result.stderr}")
@@ -58,4 +63,3 @@ def show_text_input_dialog() -> Optional[str]:
     except Exception as e:
         print(f"Error showing text input dialog: {e}")
         return None
-

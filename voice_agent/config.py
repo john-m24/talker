@@ -54,6 +54,21 @@ class Config:
         # Global hotkey for triggering text commands (e.g., 'ctrl+alt', 'ctrl+option')
         self.text_hotkey = os.getenv("VOICE_AGENT_TEXT_HOTKEY", "ctrl+alt")
         
+        # Cache configuration
+        self.cache_enabled = os.getenv("VOICE_AGENT_CACHE_ENABLED", "true").lower() == "true"
+        self.cache_apps_ttl = float(os.getenv("VOICE_AGENT_CACHE_APPS_TTL", "10"))
+        self.cache_tabs_ttl = float(os.getenv("VOICE_AGENT_CACHE_TABS_TTL", "10"))
+        self.cache_presets_ttl = float(os.getenv("VOICE_AGENT_CACHE_PRESETS_TTL", "60"))
+        self.cache_history_size = int(os.getenv("VOICE_AGENT_CACHE_HISTORY_SIZE", "100"))
+        self.cache_history_path = os.getenv("VOICE_AGENT_CACHE_HISTORY_PATH", os.path.expanduser("~/.voice_agent_history.json"))
+        
+        # Auto-complete configuration
+        self.autocomplete_enabled = os.getenv("VOICE_AGENT_AUTOCOMPLETE_ENABLED", "true").lower() == "true"
+        self.autocomplete_max_suggestions = int(os.getenv("VOICE_AGENT_AUTOCOMPLETE_MAX_SUGGESTIONS", "5"))
+        
+        # LLM cache configuration (optional)
+        self.llm_cache_enabled = os.getenv("VOICE_AGENT_LLM_CACHE_ENABLED", "false").lower() == "true"
+        
         # Monitor coordinates for multi-monitor window placement
         # Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
         # Coordinates are absolute screen coordinates
@@ -120,6 +135,15 @@ SILENCE_DURATION = _config.silence_duration
 HOTKEY = _config.hotkey
 TEXT_HOTKEY = _config.text_hotkey
 MONITORS = _config.monitors
+CACHE_ENABLED = _config.cache_enabled
+CACHE_APPS_TTL = _config.cache_apps_ttl
+CACHE_TABS_TTL = _config.cache_tabs_ttl
+CACHE_PRESETS_TTL = _config.cache_presets_ttl
+CACHE_HISTORY_SIZE = _config.cache_history_size
+CACHE_HISTORY_PATH = _config.cache_history_path
+AUTOCOMPLETE_ENABLED = _config.autocomplete_enabled
+AUTOCOMPLETE_MAX_SUGGESTIONS = _config.autocomplete_max_suggestions
+LLM_CACHE_ENABLED = _config.llm_cache_enabled
 
 __all__ = [
     "Config",
@@ -131,4 +155,13 @@ __all__ = [
     "HOTKEY",
     "TEXT_HOTKEY",
     "MONITORS",
+    "CACHE_ENABLED",
+    "CACHE_APPS_TTL",
+    "CACHE_TABS_TTL",
+    "CACHE_PRESETS_TTL",
+    "CACHE_HISTORY_SIZE",
+    "CACHE_HISTORY_PATH",
+    "AUTOCOMPLETE_ENABLED",
+    "AUTOCOMPLETE_MAX_SUGGESTIONS",
+    "LLM_CACHE_ENABLED",
 ]

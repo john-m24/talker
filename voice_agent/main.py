@@ -11,7 +11,11 @@ from .tab_control import list_chrome_tabs_with_content
 from .clarification import show_clarification_dialog
 from .text_input import show_text_input_dialog
 from .commands import CommandExecutor
-from .config import LLM_ENDPOINT, STT_ENGINE, HOTKEY, TEXT_HOTKEY, WHISPER_MODEL
+from .config import (
+    LLM_ENDPOINT, STT_ENGINE, HOTKEY, TEXT_HOTKEY, WHISPER_MODEL,
+    CACHE_ENABLED, CACHE_HISTORY_SIZE, CACHE_HISTORY_PATH,
+    AUTOCOMPLETE_ENABLED, AUTOCOMPLETE_MAX_SUGGESTIONS, LLM_CACHE_ENABLED
+)
 from .hotkey import HotkeyListener
 from .presets import load_presets, list_presets
 
@@ -130,7 +134,8 @@ def process_command(
     chrome_tabs: Optional[list],
     chrome_tabs_raw: Optional[str],
     available_presets: Optional[list],
-    command_executor: CommandExecutor
+    command_executor: CommandExecutor,
+    cache_manager=None
 ) -> bool:
     """
     Process a command from text input (voice or text mode).
@@ -180,6 +185,14 @@ def process_command(
     # Execute command(s) using command executor
     command_executor.execute(intent_result, running_apps=running_apps, chrome_tabs=chrome_tabs)
     
+    # Track command in history (if cache is enabled)
+    if cache_manager:
+        try:
+            cache_manager.add_to_history(text)
+        except Exception as e:
+            # Silently fail if cache is not available
+            pass
+    
     return True
 
 
@@ -203,14 +216,38 @@ def main():
             print(f"⚠️  Warning: Could not initialize Whisper: {e}")
             print("   Model will be loaded on first use.\n")
     
+    # Initialize cache manager first (needed for AI agent if LLM cache is enabled)
+    cache_manager = None
+    if CACHE_ENABLED:
+        try:
+            from .cache import CacheManager
+            cache_manager = CacheManager(
+                enabled=CACHE_ENABLED,
+                history_size=CACHE_HISTORY_SIZE,
+                history_path=CACHE_HISTORY_PATH
+            )
+            print("Cache manager initialized.\n")
+        except Exception as e:
+            print(f"Warning: Could not initialize cache manager: {e}\n")
+    
     # Initialize AI agent
     try:
-        agent = AIAgent()
+        agent = AIAgent(cache_manager=cache_manager if LLM_CACHE_ENABLED else None)
         print("AI agent initialized successfully.\n")
     except Exception as e:
         print(f"Error initializing AI agent: {e}")
         print("Please check your LLM endpoint configuration.")
         sys.exit(1)
+    
+    # Initialize autocomplete engine
+    autocomplete_engine = None
+    if AUTOCOMPLETE_ENABLED:
+        try:
+            from .autocomplete import AutocompleteEngine
+            autocomplete_engine = AutocompleteEngine(max_suggestions=AUTOCOMPLETE_MAX_SUGGESTIONS)
+            print("Auto-complete engine initialized.\n")
+        except Exception as e:
+            print(f"Warning: Could not initialize auto-complete engine: {e}\n")
     
     # Get installed apps once (for context)
     installed_apps = list_installed_apps()
@@ -298,7 +335,7 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor, cache_manager
                 )
                 
                 if not should_continue:
@@ -316,7 +353,10 @@ def main():
                 # Text mode: show input dialog
                 print("✅ Text hotkey pressed! Opening text input dialog...\n")
                 
-                text = show_text_input_dialog()
+                text = show_text_input_dialog(
+                    autocomplete_engine=autocomplete_engine,
+                    cache_manager=cache_manager
+                )
                 
                 if not text:
                     # User cancelled
@@ -325,7 +365,7 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor, cache_manager
                 )
                 
                 if not should_continue:

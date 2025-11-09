@@ -1,24 +1,27 @@
 """AI agent for parsing voice commands into structured intents."""
 
 import json
+import hashlib
 import openai
 from typing import Dict, List, Optional, Union
-from .config import LLM_ENDPOINT, LLM_MODEL
+from .config import LLM_ENDPOINT, LLM_MODEL, LLM_CACHE_ENABLED
 
 
 class AIAgent:
     """AI agent that uses OpenAI-compatible API to parse user commands."""
     
-    def __init__(self, endpoint: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, endpoint: Optional[str] = None, model: Optional[str] = None, cache_manager=None):
         """
         Initialize the AI agent.
         
         Args:
             endpoint: LLM endpoint URL (defaults to config value)
             model: Model name (defaults to config value)
+            cache_manager: CacheManager instance for LLM response caching (optional)
         """
         self.endpoint = endpoint or LLM_ENDPOINT
         self.model = model or LLM_MODEL
+        self.cache_manager = cache_manager
         
         # Initialize OpenAI client with custom endpoint
         self.client = openai.OpenAI(
@@ -125,6 +128,18 @@ class AIAgent:
             context_parts.append(
                 f"Some installed applications (for reference): {', '.join(apps_preview)}"
             )
+        
+        # Generate cache key for LLM response (if caching is enabled)
+        cache_key = None
+        if LLM_CACHE_ENABLED and self.cache_manager:
+            # Create cache key from text and context (apps, tabs, presets)
+            context_str = f"{text}|{','.join(running_apps)}|{','.join(installed_apps or [])}|{','.join(available_presets or [])}"
+            cache_key = f"llm_response:{hashlib.md5(context_str.encode()).hexdigest()}"
+            
+            # Check cache first
+            cached_result = self.cache_manager.get(cache_key)
+            if cached_result is not None:
+                return cached_result
         
         context_parts.extend([
             "",
@@ -310,6 +325,11 @@ class AIAgent:
                         cmd["type"] = "list_apps"
                 
                 result["commands"] = commands
+                
+                # Cache the result (if caching is enabled)
+                if cache_key and self.cache_manager:
+                    # Cache with no TTL (context changes will invalidate via different key)
+                    self.cache_manager.set(cache_key, result, ttl=0)
                 
                 return result
             except json.JSONDecodeError as e:

@@ -4,6 +4,19 @@ import os
 import json
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+from .config import CACHE_ENABLED, CACHE_PRESETS_TTL
+
+# Module-level cache manager (initialized on first use)
+_cache_manager = None
+
+
+def _get_cache_manager():
+    """Get or create cache manager instance."""
+    global _cache_manager
+    if _cache_manager is None and CACHE_ENABLED:
+        from .cache import CacheManager
+        _cache_manager = CacheManager(enabled=CACHE_ENABLED)
+    return _cache_manager
 
 
 def _get_presets_file_path() -> str:
@@ -37,12 +50,21 @@ def _get_presets_file_path() -> str:
 def load_presets() -> Dict[str, Any]:
     """
     Load presets from JSON configuration file.
+    Uses cache if enabled.
     
     Returns:
         Dictionary mapping preset names to preset configurations.
         Each preset config has an 'apps' list with app placement instructions.
         Returns empty dict if file doesn't exist or is invalid.
     """
+    # Check cache first
+    cache_manager = _get_cache_manager()
+    if cache_manager:
+        cached = cache_manager.get("presets")
+        if cached is not None:
+            return cached
+    
+    # Cache miss - load from file
     presets_file = _get_presets_file_path()
     
     if not os.path.exists(presets_file):
@@ -60,6 +82,10 @@ def load_presets() -> Dict[str, Any]:
                 valid_presets[preset_name] = preset_config
             else:
                 print(f"Warning: Skipping invalid preset '{preset_name}'")
+        
+        # Cache the result
+        if cache_manager:
+            cache_manager.set("presets", valid_presets, ttl=CACHE_PRESETS_TTL)
         
         return valid_presets
     except json.JSONDecodeError as e:

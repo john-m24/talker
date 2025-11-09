@@ -8,4 +8,5 @@ pyaudio
 pocketsphinx
 pynput>=1.7.6
 python-dotenv
+flask>=2.0.0
 

@@ -2,12 +2,25 @@
 
 import re
 import time
-from typing import List, Optional, Dict, Union
+from typing import List, Optional, Dict, Union, Tuple
 from urllib.parse import urlparse
 from .utils import AppleScriptExecutor, escape_applescript_string
+from .config import CACHE_ENABLED, CACHE_TABS_TTL
 
 # Create a module-level executor instance
 _executor = AppleScriptExecutor()
+
+# Module-level cache manager (initialized on first use)
+_cache_manager = None
+
+
+def _get_cache_manager():
+    """Get or create cache manager instance."""
+    global _cache_manager
+    if _cache_manager is None and CACHE_ENABLED:
+        from .cache import CacheManager
+        _cache_manager = CacheManager(enabled=CACHE_ENABLED)
+    return _cache_manager
 
 # Module-level cache for tab content
 # Structure: {url: {"content": str, "title": str, "timestamp": float}}
@@ -343,13 +356,23 @@ def get_tab_content_summary(tab_index: Optional[int] = None, tab_url: Optional[s
         return None
 
 
-def list_chrome_tabs_with_content() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional[str]]:
+def list_chrome_tabs_with_content() -> Tuple[List[Dict[str, Union[str, int, bool]]], Optional[str]]:
     """
     Get a list of all Chrome tabs with content summaries pre-loaded.
+    Uses cache if enabled.
     
     Returns:
         Tuple of (list of tab dicts with 'content_summary' field added, raw AppleScript output)
     """
+    # Check cache first
+    cache_manager = _get_cache_manager()
+    if cache_manager:
+        cached = cache_manager.get("chrome_tabs")
+        cached_raw = cache_manager.get("chrome_tabs_raw")
+        if cached is not None and cached_raw is not None:
+            return cached, cached_raw
+    
+    # Cache miss - fetch from Chrome
     # Get basic tab metadata and raw output
     tabs, raw_output = list_chrome_tabs()
     
@@ -385,6 +408,12 @@ def list_chrome_tabs_with_content() -> tuple[List[Dict[str, Union[str, int, bool
         
         # Small delay to avoid overwhelming Chrome
         time.sleep(0.1)
+    
+    # Cache the result
+    if cache_manager:
+        cache_manager.set("chrome_tabs", tabs, ttl=CACHE_TABS_TTL)
+        if raw_output:
+            cache_manager.set("chrome_tabs_raw", raw_output, ttl=CACHE_TABS_TTL)
     
     return tabs, raw_output
 

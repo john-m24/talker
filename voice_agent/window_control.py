@@ -2,17 +2,38 @@
 
 import os
 from typing import List, Optional
-from .config import MONITORS
+from .config import MONITORS, CACHE_ENABLED, CACHE_APPS_TTL
 from .utils import AppleScriptExecutor, escape_applescript_string
+
+# Module-level cache manager (initialized on first use)
+_cache_manager = None
+
+
+def _get_cache_manager():
+    """Get or create cache manager instance."""
+    global _cache_manager
+    if _cache_manager is None and CACHE_ENABLED:
+        from .cache import CacheManager
+        _cache_manager = CacheManager(enabled=CACHE_ENABLED)
+    return _cache_manager
 
 
 def list_running_apps() -> List[str]:
     """
     Get a list of currently running, non-background applications.
+    Uses cache if enabled.
     
     Returns:
         List of application names (strings)
     """
+    # Check cache first
+    cache_manager = _get_cache_manager()
+    if cache_manager:
+        cached = cache_manager.get("running_apps")
+        if cached is not None:
+            return cached
+    
+    # Cache miss - fetch from system
     try:
         script = 'tell application "System Events" to get name of every process whose background only is false'
         success, stdout, stderr = _executor.execute(script, check=True)
@@ -23,6 +44,11 @@ def list_running_apps() -> List[str]:
         
         # Parse the comma-separated list
         apps = [app.strip() for app in stdout.split(", ")] if stdout else []
+        
+        # Cache the result
+        if cache_manager:
+            cache_manager.set("running_apps", apps, ttl=CACHE_APPS_TTL)
+        
         return apps
     except Exception as e:
         print(f"Unexpected error listing apps: {e}")
@@ -32,10 +58,19 @@ def list_running_apps() -> List[str]:
 def list_installed_apps() -> List[str]:
     """
     Get a list of installed applications from /Applications directory.
+    Uses cache if enabled.
     
     Returns:
         List of application names (without .app extension)
     """
+    # Check cache first
+    cache_manager = _get_cache_manager()
+    if cache_manager:
+        cached = cache_manager.get("installed_apps")
+        if cached is not None:
+            return cached
+    
+    # Cache miss - fetch from filesystem
     apps = []
     applications_dir = "/Applications"
     
@@ -49,7 +84,13 @@ def list_installed_apps() -> List[str]:
                 app_name = item[:-4]
                 apps.append(app_name)
         
-        return sorted(apps)
+        apps = sorted(apps)
+        
+        # Cache the result (longer TTL for installed apps)
+        if cache_manager:
+            cache_manager.set("installed_apps", apps, ttl=CACHE_APPS_TTL * 3)  # 3x TTL for installed apps
+        
+        return apps
     except Exception as e:
         print(f"Error listing installed apps: {e}")
         return []
