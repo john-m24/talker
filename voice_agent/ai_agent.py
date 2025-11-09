@@ -47,7 +47,7 @@ class AIAgent:
             
         Returns:
             Dictionary with 'commands' array (list of intent dicts), 'needs_clarification', and 'clarification_reason'
-            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_title', 'tab_index', 'preset_name', 'content_query'
+            Each intent in 'commands' has 'type' and optionally 'app_name', 'monitor', 'maximize', 'tab_index', 'tab_indices', 'preset_name'
             Example (single command): {"commands": [{"type": "focus_app", "app_name": "Docker Desktop"}], "needs_clarification": false, "clarification_reason": null}
             Example (multiple commands): {"commands": [{"type": "place_app", "app_name": "Google Chrome", "monitor": "left"}, {"type": "place_app", "app_name": "Cursor", "monitor": "right"}], "needs_clarification": false, "clarification_reason": null}
             Example (preset): {"commands": [{"type": "activate_preset", "preset_name": "code space"}], "needs_clarification": false, "clarification_reason": null}
@@ -145,13 +145,12 @@ class AIAgent:
             "",
             "Each intent object in the 'commands' array should have:",
             "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', 'list_tabs', 'close_app', 'close_tab', or 'activate_preset'",
-            "- 'app_name': (for focus_app, place_app, and close_app) the exact application name - prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running)",
-            "- 'monitor': (for place_app) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
-            "- 'maximize': (for place_app, optional boolean) true if user wants to maximize the window, false otherwise",
-            "- 'tab_index': (for switch_tab and close_tab, REQUIRED when matching) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab",
-            "- 'tab_title': (for switch_tab and close_tab, optional) only use if user explicitly mentions a title, otherwise analyze tabs and return tab_index",
-            "- 'content_query': (for switch_tab and close_tab, optional) only use for reference, but YOU should analyze and return tab_index",
-            "- 'preset_name': (for activate_preset) the exact preset name from the available presets list (case-insensitive matching is supported)",
+            "- 'app_name': (for focus_app, place_app, and close_app, string, required) the exact application name - prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running) (non-empty string)",
+            "- 'monitor': (for place_app, enum, required) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
+            "- 'maximize': (for place_app, boolean, optional) true if user wants to maximize the window, false otherwise (default: false)",
+            "- 'tab_index': (for switch_tab, integer, required) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab (positive integer, 1-based)",
+            "- 'tab_indices': (for close_tab, array<integer>, required) array of tab indices - for single tab use [3], for multiple tabs use [2, 5, 8] (array of positive integers, non-empty, 1-based)",
+            "- 'preset_name': (for activate_preset, string, required) the exact preset name from the available presets list (case-insensitive matching is supported) (non-empty string)",
             "",
             "Monitor placement patterns to recognize:",
             "- 'put X on [right/left/main] monitor' -> type: 'place_app', monitor: 'right'/'left'/'main'",
@@ -191,14 +190,18 @@ class AIAgent:
             "- 'open github' -> Analyze all tabs, find the one with 'github.com' in domain/URL, return tab_index",
             "- 'switch to tab about Python' -> Analyze all tabs, find the one with 'Python' in content summary or title, return tab_index",
             "",
-            "CRITICAL: You MUST return 'tab_index' (the numeric index) when you find a matching tab.",
-            "Do NOT return 'tab_title' or 'content_query' - return the specific 'tab_index' of the matching tab.",
+            "CRITICAL: You MUST return 'tab_index' (integer) for switch_tab or 'tab_indices' (array<integer>) for close_tab when you find matching tab(s).",
+            "Do NOT return 'tab_title' or 'content_query' - return the specific 'tab_index' or 'tab_indices' of the matching tab(s).",
+            "For close_tab: Always use 'tab_indices' array, even for single tab (e.g., tab_indices: [3] instead of tab_index: 3).",
             "If no matching tab is found, set 'needs_clarification' to true.",
             "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
             "If the user wants to close/quit an app, use type 'close_app' and extract the app name.",
             "Patterns for close_app: 'close [App]', 'quit [App]', 'exit [App]' -> type: 'close_app'.",
-            "If the user wants to close a tab, use type 'close_tab' and extract tab_title or tab_index.",
-            "Patterns for close_tab: 'close tab [Number]', 'close [Tab Name]' -> type: 'close_tab'.",
+            "If the user wants to close a tab, use type 'close_tab' and extract tab_indices array.",
+            "For single tab: 'close tab 3' -> type: 'close_tab', tab_indices: [3]",
+            "For multiple tabs: 'close tabs 1, 3, and 5' -> type: 'close_tab', tab_indices: [1, 3, 5]",
+            "For bulk operations: 'close all reddit tabs' -> analyze all tabs, find all matching tabs, return tab_indices: [2, 5, 8]",
+            "Patterns for close_tab: 'close tab [Number]', 'close tabs [Numbers]', 'close all [domain] tabs' -> type: 'close_tab', tab_indices: [array]",
             "If the user wants to activate a preset, use type 'activate_preset' and extract the preset name.",
             "Preset activation patterns to recognize:",
             "- 'activate [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
@@ -229,13 +232,6 @@ class AIAgent:
         ])
         
         prompt = "\n".join(context_parts)
-        
-        # Debug: Print the prompt being sent to the LLM
-        print("\n" + "=" * 80)
-        print("DEBUG: Prompt sent to LLM:")
-        print("=" * 80)
-        print(prompt)
-        print("=" * 80 + "\n")
         
         try:
             # Try with response_format first (for models that support JSON mode)
@@ -276,11 +272,6 @@ class AIAgent:
             # Extract JSON from response
             content = response.choices[0].message.content.strip()
             
-            # Debug: Print the raw response from the LLM
-            print("DEBUG: Raw LLM response:")
-            print(content)
-            print()
-            
             # Try to extract JSON from code blocks if present
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
@@ -290,11 +281,6 @@ class AIAgent:
             # Parse JSON
             try:
                 result = json.loads(content)
-                
-                # Debug: Print the parsed result
-                print("DEBUG: Parsed intent:")
-                print(json.dumps(result, indent=2))
-                print()
                 
                 # Normalize to new structure with 'commands' array
                 # Handle backward compatibility: if old format (has 'type' at top level), convert to new format

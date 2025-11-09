@@ -15,19 +15,24 @@ class SwitchTabCommand(Command):
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the switch tab command - AI has already selected the tab."""
         tab_index = intent.get("tab_index")
-        tab_title = intent.get("tab_title")  # Fallback only
         
-        if tab_index:
-            # AI has selected the specific tab
-            print(f"Switching to Chrome tab #{tab_index}...")
-            success = switch_to_chrome_tab(tab_index=tab_index)
-        elif tab_title:
-            # Fallback: use title matching if AI didn't provide index
-            print(f"Switching to Chrome tab matching '{tab_title}'...")
-            success = switch_to_chrome_tab(tab_title=tab_title)
-        else:
-            print("Error: No tab specified")
-            success = False
+        # Validate tab_index is a positive integer
+        if not tab_index:
+            print("Error: No tab_index specified")
+            return False
+        
+        try:
+            tab_index = int(tab_index)
+            if tab_index <= 0:
+                print(f"Error: Invalid tab_index: {tab_index} (must be positive integer)")
+                return False
+        except (ValueError, TypeError):
+            print(f"Error: Invalid tab_index: {tab_index} (must be integer)")
+            return False
+        
+        # AI has selected the specific tab
+        print(f"Switching to Chrome tab #{tab_index}...")
+        success = switch_to_chrome_tab(tab_index=tab_index)
         
         if success:
             print(f"✓ Successfully switched tab\n")

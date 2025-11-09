@@ -408,55 +408,39 @@ def get_cache_stats() -> Dict[str, int]:
     }
 
 
-def switch_to_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[int] = None) -> bool:
+def switch_to_chrome_tab(tab_index: int) -> bool:
     """
-    Switch to a specific Chrome tab by title or index.
+    Switch to a specific Chrome tab by index.
     
     Args:
-        tab_title: Title of the tab to switch to (fuzzy matching via contains)
-        tab_index: Global index of the tab (1-based, across all windows, matching list_chrome_tabs)
+        tab_index: Global index of the tab (integer, 1-based, across all windows, matching list_chrome_tabs)
         
     Returns:
         True if successful, False otherwise
     """
     try:
-        if tab_index:
-            # Switch by global index (across all windows)
-            script = f'''
-            tell application "Google Chrome"
-                activate
-                set globalTabIndex to 1
-                repeat with w in windows
-                    set localTabIndex to 1
-                    repeat with t in tabs of w
-                        if globalTabIndex = {tab_index} then
-                            set active tab index of w to localTabIndex
-                            return true
-                        end if
-                        set globalTabIndex to globalTabIndex + 1
-                        set localTabIndex to localTabIndex + 1
-                    end repeat
-                end repeat
-            end tell
-            '''
-        elif tab_title:
-            # Switch by title (fuzzy match, searches front window only for consistency)
-            script = f'''
-            tell application "Google Chrome"
-                activate
-                set frontWindow to front window
-                set tabIndex to 1
-                repeat with t in tabs of frontWindow
-                    if title of t contains "{tab_title}" then
-                        set active tab index of frontWindow to tabIndex
+        if not tab_index or tab_index <= 0:
+            print(f"Error: Invalid tab_index: {tab_index} (must be positive integer)")
+            return False
+        
+        # Switch by global index (across all windows)
+        script = f'''
+        tell application "Google Chrome"
+            activate
+            set globalTabIndex to 1
+            repeat with w in windows
+                set localTabIndex to 1
+                repeat with t in tabs of w
+                    if globalTabIndex = {tab_index} then
+                        set active tab index of w to localTabIndex
                         return true
                     end if
-                    set tabIndex to tabIndex + 1
+                    set globalTabIndex to globalTabIndex + 1
+                    set localTabIndex to localTabIndex + 1
                 end repeat
-            end tell
-            '''
-        else:
-            return False
+            end repeat
+        end tell
+        '''
             
         success, stdout, stderr = _executor.execute(script)
         
@@ -470,53 +454,39 @@ def switch_to_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[in
         return False
 
 
-def close_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[int] = None) -> bool:
+def close_chrome_tab(tab_index: int) -> bool:
     """
-    Close a specific Chrome tab by title or index.
+    Close a specific Chrome tab by index.
     Closes the tab directly without confirmation dialog.
-    Supports global tab indices (across all windows) when using tab_index.
+    Supports global tab indices (across all windows).
     
     Args:
-        tab_title: Title of the tab to close (fuzzy matching via contains, searches front window only)
-        tab_index: Global index of the tab (1-based, across all windows, matching list_chrome_tabs)
+        tab_index: Global index of the tab (integer, 1-based, across all windows, matching list_chrome_tabs)
         
     Returns:
         True if successful, False otherwise
     """
     try:
-        if tab_index:
-            # Close by global index (across all windows)
-            script = f'''
-            tell application "Google Chrome"
-                activate
-                set globalTabIndex to 1
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        if globalTabIndex = {tab_index} then
-                            close t
-                            return true
-                        end if
-                        set globalTabIndex to globalTabIndex + 1
-                    end repeat
-                end repeat
-            end tell
-            '''
-        elif tab_title:
-            # Close by title (fuzzy match, searches front window only for consistency with switch_to_chrome_tab)
-            script = f'''
-            tell application "Google Chrome"
-                activate
-                set frontWindow to front window
-                repeat with t in tabs of frontWindow
-                    if title of t contains "{tab_title}" then
+        if not tab_index or tab_index <= 0:
+            print(f"Error: Invalid tab_index: {tab_index} (must be positive integer)")
+            return False
+        
+        # Close by global index (across all windows)
+        script = f'''
+        tell application "Google Chrome"
+            activate
+            set globalTabIndex to 1
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if globalTabIndex = {tab_index} then
                         close t
                         return true
                     end if
+                    set globalTabIndex to globalTabIndex + 1
                 end repeat
-            end tell
-            '''
-        else:
-            return False
+            end repeat
+        end tell
+        '''
             
         success, stdout, stderr = _executor.execute(script)
         
@@ -528,4 +498,57 @@ def close_chrome_tab(tab_title: Optional[str] = None, tab_index: Optional[int] =
     except Exception as e:
         print(f"Unexpected error closing Chrome tab: {e}")
         return False
+
+
+def close_chrome_tabs_by_indices(tab_indices: List[int]) -> int:
+    """
+    Close multiple Chrome tabs by their global indices.
+    Closes tabs from highest to lowest index to avoid index shifting.
+    Fails immediately if any tab index is invalid (doesn't close any tabs).
+    
+    Args:
+        tab_indices: List of global tab indices (array<integer>, 1-based, across all windows)
+        
+    Returns:
+        Number of successfully closed tabs (should match input length if successful)
+    """
+    try:
+        if not tab_indices or len(tab_indices) == 0:
+            print("Error: tab_indices array is empty")
+            return 0
+        
+        # Validate all indices are positive integers
+        for idx in tab_indices:
+            if not isinstance(idx, int) or idx <= 0:
+                print(f"Error: Invalid tab index: {idx} (must be positive integer)")
+                return 0
+        
+        # Sort indices in descending order to avoid index shifting
+        sorted_indices = sorted(tab_indices, reverse=True)
+        
+        # First, validate all indices exist by checking against current tabs
+        tabs, _ = list_chrome_tabs()
+        existing_indices = {tab['index'] for tab in tabs}
+        
+        for idx in sorted_indices:
+            if idx not in existing_indices:
+                print(f"Error: Tab index {idx} does not exist")
+                return 0
+        
+        # Close tabs from highest to lowest index
+        closed_count = 0
+        for idx in sorted_indices:
+            if close_chrome_tab(tab_index=idx):
+                closed_count += 1
+                # Small delay to avoid overwhelming Chrome
+                time.sleep(0.1)
+            else:
+                # If any tab fails to close, stop and return count so far
+                print(f"Error: Failed to close tab {idx}")
+                return closed_count
+        
+        return closed_count
+    except Exception as e:
+        print(f"Unexpected error closing Chrome tabs: {e}")
+        return 0
 

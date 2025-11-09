@@ -145,6 +145,15 @@ class HotkeyListener:
             try:
                 self.listener.start()
                 self.listener.join()
+            except KeyError as e:
+                # Suppress KeyError from pynput's accessibility check (e.g., 'AXIsProcessTrusted')
+                # This is a known issue with pynput on macOS - the listener may still work
+                if 'AXIsProcessTrusted' in str(e):
+                    # This is expected if accessibility permissions aren't granted
+                    # The listener will still work, but may have limited functionality
+                    pass
+                else:
+                    print(f"Error in hotkey listener: {e}")
             except Exception as e:
                 print(f"Error in hotkey listener: {e}")
         

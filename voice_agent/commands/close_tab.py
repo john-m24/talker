@@ -13,55 +13,51 @@ class CloseTabCommand(Command):
         return intent_type == "close_tab"
     
     def execute(self, intent: Dict[str, Any]) -> bool:
-        """Execute the close tab command."""
-        tab_title = intent.get("tab_title")
-        tab_index = intent.get("tab_index")
-        content_query = intent.get("content_query")
-        chrome_tabs = intent.get("chrome_tabs", [])
+        """Execute the close tab command - AI has already selected the tabs."""
+        tab_indices = intent.get("tab_indices")
         
-        if tab_index:
-            print(f"Closing Chrome tab #{tab_index}...")
-            success = close_chrome_tab(tab_index=tab_index)
-        elif tab_title or content_query:
-            # Enhanced matching: search in titles and content summaries
-            matching_tab = None
-            
-            if chrome_tabs:
-                # Search for matching tab
-                for tab in chrome_tabs:
-                    # Match by title
-                    if tab_title and tab_title.lower() in tab.get('title', '').lower():
-                        matching_tab = tab
-                        break
-                    
-                    # Match by content summary
-                    if content_query:
-                        content_summary = tab.get('content_summary', '').lower()
-                        if content_query.lower() in content_summary:
-                            matching_tab = tab
-                            break
-                    
-                    # Also check if tab_title matches content
-                    if tab_title:
-                        content_summary = tab.get('content_summary', '').lower()
-                        if tab_title.lower() in content_summary:
-                            matching_tab = tab
-                            break
-            
-            if matching_tab:
-                print(f"Closing Chrome tab #{matching_tab['index']}: {matching_tab.get('title', 'N/A')}...")
-                success = close_chrome_tab(tab_index=matching_tab['index'])
-            else:
-                # Fallback to original behavior
-                if tab_title:
-                    print(f"Closing Chrome tab matching '{tab_title}'...")
-                    success = close_chrome_tab(tab_title=tab_title)
-                else:
-                    print("Error: No matching tab found")
-                    success = False
+        # Validate tab_indices is a non-empty array of positive integers
+        if not tab_indices:
+            print("Error: No tab_indices specified")
+            return False
+        
+        if not isinstance(tab_indices, list):
+            print(f"Error: Invalid tab_indices: {tab_indices} (must be array)")
+            return False
+        
+        if len(tab_indices) == 0:
+            print("Error: tab_indices array is empty")
+            return False
+        
+        # Validate all elements are positive integers
+        try:
+            validated_indices = []
+            for idx in tab_indices:
+                idx_int = int(idx)
+                if idx_int <= 0:
+                    print(f"Error: Invalid tab index: {idx_int} (must be positive integer)")
+                    return False
+                validated_indices.append(idx_int)
+        except (ValueError, TypeError) as e:
+            print(f"Error: Invalid tab_indices: {tab_indices} (all elements must be positive integers)")
+            return False
+        
+        # Close tabs
+        if len(validated_indices) == 1:
+            # Single tab - use existing function
+            print(f"Closing Chrome tab #{validated_indices[0]}...")
+            success = close_chrome_tab(tab_index=validated_indices[0])
         else:
-            print("Error: No tab specified")
-            success = False
+            # Multiple tabs - use bulk function
+            print(f"Closing Chrome tabs: {validated_indices}...")
+            from ..tab_control import close_chrome_tabs_by_indices
+            closed_count = close_chrome_tabs_by_indices(validated_indices)
+            success = closed_count == len(validated_indices)
+            if success:
+                print(f"✓ Successfully closed {closed_count} tab(s)\n")
+            else:
+                print(f"✗ Failed to close all tabs (closed {closed_count} of {len(validated_indices)})\n")
+            return success
         
         if success:
             print(f"✓ Successfully closed tab\n")
