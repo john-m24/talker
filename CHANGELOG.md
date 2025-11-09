@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable text mode hotkey (`VOICE_AGENT_TEXT_HOTKEY`, default: `ctrl+alt`)
 - Both voice and text modes available simultaneously
 
-## [0.1.0] - 2024-XX-XX
+## [0.1.0] - 2025-11-09
 
 ### Added
 - Initial release of Talker
