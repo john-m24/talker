@@ -66,6 +66,9 @@ class Config:
         self.autocomplete_enabled = os.getenv("VOICE_AGENT_AUTOCOMPLETE_ENABLED", "true").lower() == "true"
         self.autocomplete_max_suggestions = int(os.getenv("VOICE_AGENT_AUTOCOMPLETE_MAX_SUGGESTIONS", "5"))
         
+        # Web dialog configuration
+        self.web_port = int(os.getenv("VOICE_AGENT_WEB_PORT", "8765"))
+        
         # LLM cache configuration (optional)
         self.llm_cache_enabled = os.getenv("VOICE_AGENT_LLM_CACHE_ENABLED", "false").lower() == "true"
         
@@ -143,6 +146,7 @@ CACHE_HISTORY_SIZE = _config.cache_history_size
 CACHE_HISTORY_PATH = _config.cache_history_path
 AUTOCOMPLETE_ENABLED = _config.autocomplete_enabled
 AUTOCOMPLETE_MAX_SUGGESTIONS = _config.autocomplete_max_suggestions
+WEB_PORT = _config.web_port
 LLM_CACHE_ENABLED = _config.llm_cache_enabled
 
 __all__ = [
@@ -163,5 +167,6 @@ __all__ = [
     "CACHE_HISTORY_PATH",
     "AUTOCOMPLETE_ENABLED",
     "AUTOCOMPLETE_MAX_SUGGESTIONS",
+    "WEB_PORT",
     "LLM_CACHE_ENABLED",
 ]

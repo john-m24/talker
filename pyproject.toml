@@ -44,6 +44,7 @@ dependencies = [
     "pocketsphinx",
     "pynput>=1.7.6",
     "python-dotenv",
+    "flask>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -64,7 +65,7 @@ Issues = "https://github.com/john-m24/talker/issues"
 talker = "voice_agent.main:main"
 
 [tool.setuptools]
-packages = ["voice_agent", "voice_agent.commands", "voice_agent.stt", "voice_agent.stt.engines", "voice_agent.utils"]
+packages = ["voice_agent", "voice_agent.commands", "voice_agent.stt", "voice_agent.stt.engines", "voice_agent.utils", "voice_agent.web"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.txt"]

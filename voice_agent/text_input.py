@@ -3,6 +3,7 @@
 import subprocess
 from typing import Optional
 from .utils import escape_applescript_string
+from .config import AUTOCOMPLETE_ENABLED
 
 
 def show_text_input_dialog(
@@ -13,16 +14,28 @@ def show_text_input_dialog(
     Show text input dialog with auto-complete support.
     
     Args:
-        autocomplete_engine: AutocompleteEngine instance (optional, for future use)
-        cache_manager: CacheManager instance (optional, for future use)
+        autocomplete_engine: AutocompleteEngine instance (optional)
+        cache_manager: CacheManager instance (optional)
     
     Returns:
         The entered text if user submits, or None if cancelled
     """
-    # TODO: Web-based dialog with auto-complete will be implemented in Phase 4
-    # For now, use AppleScript fallback dialog
+    # Try web-based dialog with auto-complete if enabled and both engine and cache are provided
+    if AUTOCOMPLETE_ENABLED and autocomplete_engine and cache_manager:
+        try:
+            from .web import WebTextInputDialog
+            dialog = WebTextInputDialog(autocomplete_engine, cache_manager)
+            return dialog.show()
+        except ImportError:
+            print("Warning: Flask not available, falling back to AppleScript dialog")
+            # Fallback to AppleScript dialog
+            pass
+        except Exception as e:
+            print(f"Error showing web dialog: {e}")
+            # Fallback to AppleScript dialog
+            pass
     
-    # AppleScript dialog (temporary fallback until web dialog is ready)
+    # Fallback to AppleScript dialog (backward compatibility or when web dialog unavailable)
     message = "Enter your command:"
     escaped_message = escape_applescript_string(message)
     
