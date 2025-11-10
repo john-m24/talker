@@ -248,7 +248,7 @@ class BackgroundContextUpdater:
         running_apps = list_running_apps()
         installed_apps = list_installed_apps()
         
-        chrome_tabs = None
+        chrome_tabs = []
         chrome_tabs_raw = None
         if running_apps and "Google Chrome" in running_apps:
             chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
@@ -299,8 +299,8 @@ class BackgroundContextUpdater:
             return True
         
         # Check if tabs changed (count or content)
-        old_tabs = old.get('chrome_tabs', [])
-        new_tabs = new.get('chrome_tabs', [])
+        old_tabs = old.get('chrome_tabs') or []
+        new_tabs = new.get('chrome_tabs') or []
         if len(old_tabs) != len(new_tabs):
             return True
         
