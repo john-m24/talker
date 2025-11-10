@@ -14,6 +14,7 @@
       }
       .container {
         padding: 12px;
+        box-sizing: border-box;
       }
       .input {
         width: 100%;
@@ -24,18 +25,24 @@
         background: #1d1d1d;
         color: #eaeaea;
         outline: none;
+        box-sizing: border-box;
       }
       .list {
         margin-top: 8px;
         max-height: 240px;
-        overflow: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
         border-radius: 8px;
         border: 1px solid #333;
         background: #161616;
+        box-sizing: border-box;
       }
       .item {
         padding: 8px 10px;
         cursor: pointer;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
       }
       .item.active {
         background: #2a2a2a;

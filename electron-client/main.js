@@ -5,8 +5,8 @@ let win
 
 function createWindow() {
 	win = new BrowserWindow({
-		width: 560,
-		height: 120,
+		width: 700,
+		height: 200,
 		frame: false,
 		show: false,
 		resizable: false,
