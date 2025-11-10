@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voice Agent - Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dialog.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Voice Agent</h2>
+            <button id="close-button" title="Close">×</button>
+        </div>
+        <div id="chat-container"></div>
+        <div class="input-area">
+            <div class="input-wrapper">
+                <input type="text" id="command-input" placeholder="Enter your command..." autofocus>
+                <div id="ghost-text"></div>
+            </div>
+            <div id="suggestions"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dialog.js') }}"></script>
+</body>
+</html>
+

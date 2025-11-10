@@ -15,32 +15,39 @@ class ListAppsCommand(Command):
         """Execute the list apps command."""
         running_apps = intent.get("running_apps", [])
         
-        # Check if web dialog is active - if so, send results there
+        # Always use web dialog - create one if it doesn't exist
         try:
-            from ..web.dialog import get_active_dialog
+            from ..web.dialog import get_active_dialog, WebTextInputDialog
+            from ..cache import get_cache_manager
+            from ..autocomplete import AutocompleteEngine
+            from ..config import AUTOCOMPLETE_MAX_SUGGESTIONS
+            
             active_dialog = get_active_dialog()
-            if active_dialog:
-                # Format apps for display
-                if not running_apps:
-                    items = ["No applications are currently running."]
-                else:
-                    items = [f"{app}" for app in running_apps]
-                
-                # Send results to dialog
-                active_dialog.send_results("Currently Running Applications", items)
-                print()  # Keep a blank line for console output consistency
-                return True
-        except ImportError:
-            pass
-        
-        # Fallback to console output (no popup)
-        print("\nCurrently running applications:")
-        if running_apps:
-            for i, app in enumerate(running_apps, 1):
-                print(f"  {i}. {app}")
-        else:
-            print("  No applications are currently running.")
-        print()
-        
-        return True
+            if not active_dialog:
+                # Create a new dialog if none exists
+                cache_manager = get_cache_manager()
+                autocomplete_engine = AutocompleteEngine(max_suggestions=AUTOCOMPLETE_MAX_SUGGESTIONS)
+                active_dialog = WebTextInputDialog(autocomplete_engine, cache_manager)
+                # Open the dialog
+                active_dialog.show()
+            
+            # Format apps for display
+            if not running_apps:
+                items = ["No applications are currently running."]
+            else:
+                items = [f"{app}" for app in running_apps]
+            
+            # Send results to dialog
+            active_dialog.send_results("Currently Running Applications", items)
+            return True
+        except Exception as e:
+            # If web dialog fails, fall back to console (shouldn't happen)
+            print(f"\nCurrently running applications:")
+            if running_apps:
+                for i, app in enumerate(running_apps, 1):
+                    print(f"  {i}. {app}")
+            else:
+                print("  No applications are currently running.")
+            print()
+            return True
 
