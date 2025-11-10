@@ -5,6 +5,8 @@ import hashlib
 import openai
 from typing import Dict, List, Optional, Union
 from .config import LLM_ENDPOINT, LLM_MODEL, LLM_CACHE_ENABLED
+from .hardcoded_commands import get_hardcoded_command
+from .pattern_matcher import PatternMatcher
 
 
 class AIAgent:
@@ -22,6 +24,7 @@ class AIAgent:
         self.endpoint = endpoint or LLM_ENDPOINT
         self.model = model or LLM_MODEL
         self.cache_manager = cache_manager
+        self.pattern_matcher = PatternMatcher()
         
         # Initialize OpenAI client with custom endpoint
         self.client = openai.OpenAI(
@@ -55,6 +58,42 @@ class AIAgent:
             Example (multiple commands): {"commands": [{"type": "place_app", "app_name": "Google Chrome", "monitor": "left"}, {"type": "place_app", "app_name": "Cursor", "monitor": "right"}], "needs_clarification": false, "clarification_reason": null}
             Example (preset): {"commands": [{"type": "activate_preset", "preset_name": "code space"}], "needs_clarification": false, "clarification_reason": null}
         """
+        # Normalize input text
+        normalized_text = text.lower().strip()
+        
+        # Tier 1: Check hardcoded commands first (instant, 0ms)
+        hardcoded_result = get_hardcoded_command(normalized_text)
+        if hardcoded_result is not None:
+            return hardcoded_result
+        
+        # Tier 2: Try pattern matching (fast, ~10-50ms, no LLM)
+        pattern_result = self.pattern_matcher.match_pattern(
+            normalized_text,
+            running_apps,
+            installed_apps or [],
+            available_presets
+        )
+        if pattern_result is not None:
+            return pattern_result
+        
+        # Tier 3: Fall back to LLM with text-only cache (slow, ~500-2000ms, only when needed)
+        # Generate text-only cache key (normalized text hash)
+        cache_key = None
+        if LLM_CACHE_ENABLED and self.cache_manager:
+            cache_key = f"llm_response:{hashlib.md5(normalized_text.encode()).hexdigest()}"
+            
+            # Check text-only cache first
+            cached_result = self.cache_manager.get(cache_key)
+            if cached_result is not None:
+                # Validate context after cache hit
+                validated_result = self._validate_context(
+                    cached_result,
+                    running_apps,
+                    installed_apps or [],
+                    available_presets
+                )
+                return validated_result
+        
         # Build context for the AI
         context_parts = [
             "You are a macOS window control assistant. Parse the user's command and return a JSON response.",
@@ -129,22 +168,10 @@ class AIAgent:
                 f"Some installed applications (for reference): {', '.join(apps_preview)}"
             )
         
-        # Generate cache key for LLM response (if caching is enabled)
-        cache_key = None
-        if LLM_CACHE_ENABLED and self.cache_manager:
-            # Create cache key from text and context (apps, tabs, presets)
-            context_str = f"{text}|{','.join(running_apps)}|{','.join(installed_apps or [])}|{','.join(available_presets or [])}"
-            cache_key = f"llm_response:{hashlib.md5(context_str.encode()).hexdigest()}"
-            
-            # Check cache first
-            cached_result = self.cache_manager.get(cache_key)
-            if cached_result is not None:
-                return cached_result
-        
         context_parts.extend([
             "",
             "User command:",
-            text,
+            normalized_text,
             "",
             "IMPORTANT: The user may give multiple commands in a single utterance.",
             "Look for conjunctions like 'and', 'then', 'also' that indicate multiple commands.",
@@ -326,9 +353,9 @@ class AIAgent:
                 
                 result["commands"] = commands
                 
-                # Cache the result (if caching is enabled)
+                # Cache the result with text-only key (if caching is enabled)
                 if cache_key and self.cache_manager:
-                    # Cache with no TTL (context changes will invalidate via different key)
+                    # Cache with no TTL (text-only key means context changes don't invalidate)
                     self.cache_manager.set(cache_key, result, ttl=0)
                 
                 return result
@@ -342,4 +369,64 @@ class AIAgent:
             import traceback
             traceback.print_exc()
             return {"commands": [{"type": "list_apps"}], "needs_clarification": False, "clarification_reason": None}
+    
+    def _validate_context(
+        self,
+        cached_result: Dict[str, Union[List[Dict], bool, Optional[str]]],
+        running_apps: List[str],
+        installed_apps: List[str],
+        available_presets: Optional[List[str]] = None
+    ) -> Dict[str, Union[List[Dict], bool, Optional[str]]]:
+        """
+        Validate and update app names from current context after cache hit.
+        
+        Args:
+            cached_result: Cached intent result
+            running_apps: List of currently running apps
+            installed_apps: List of installed apps
+            available_presets: Optional list of available presets
+            
+        Returns:
+            Validated intent result with updated app names if needed
+        """
+        from .fuzzy_matcher import match_app_name, match_preset_name
+        
+        # Make a copy to avoid modifying the cached result
+        result = json.loads(json.dumps(cached_result))
+        commands = result.get("commands", [])
+        
+        # Validate each command
+        for cmd in commands:
+            cmd_type = cmd.get("type")
+            
+            # Validate app_name for app commands
+            if cmd_type in ["focus_app", "place_app", "close_app"]:
+                app_name = cmd.get("app_name")
+                if app_name:
+                    # Check if app name exists in current context
+                    if app_name not in running_apps and app_name not in installed_apps:
+                        # Try fuzzy matching to find current app name
+                        matched_app = match_app_name(app_name, running_apps, installed_apps)
+                        if matched_app:
+                            cmd["app_name"] = matched_app
+                        else:
+                            # App not found, but keep original (might be valid)
+                            pass
+            
+            # Validate preset_name for preset commands
+            if cmd_type == "activate_preset" and available_presets:
+                preset_name = cmd.get("preset_name")
+                if preset_name:
+                    # Check if preset name exists in current context
+                    if preset_name not in available_presets:
+                        # Try fuzzy matching to find current preset name
+                        matched_preset = match_preset_name(preset_name, available_presets)
+                        if matched_preset:
+                            cmd["preset_name"] = matched_preset
+                        else:
+                            # Preset not found, mark as needing clarification
+                            result["needs_clarification"] = True
+                            result["clarification_reason"] = f"Preset '{preset_name}' not found in available presets"
+        
+        return result
 

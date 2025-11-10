@@ -70,7 +70,15 @@ class Config:
         self.web_port = int(os.getenv("VOICE_AGENT_WEB_PORT", "8765"))
         
         # LLM cache configuration (optional)
-        self.llm_cache_enabled = os.getenv("VOICE_AGENT_LLM_CACHE_ENABLED", "false").lower() == "true"
+        # Enables caching of LLM responses using text-only cache keys (normalized text hash)
+        # This is part of the tiered parsing strategy:
+        # - Tier 1: Hardcoded commands (instant, 0ms)
+        # - Tier 2: Pattern matching + fuzzy matching (fast, ~10-50ms, no LLM)
+        # - Tier 3: LLM fallback with text-only cache (slow, ~500-2000ms, only when needed)
+        # The text-only cache key means context changes (apps, tabs, presets) don't invalidate
+        # the cache, but context validation is performed after cache hits to ensure app names
+        # are still valid.
+        self.llm_cache_enabled = os.getenv("VOICE_AGENT_LLM_CACHE_ENABLED", "true").lower() == "true"
         
         # Monitor coordinates for multi-monitor window placement
         # Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
