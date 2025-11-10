@@ -435,60 +435,39 @@ class FileContextTracker:
         """
         project_name_lower = project_name.lower().strip()
         if not project_name_lower:
-            print(f"🔍 [DEBUG] find_project: Empty project name provided")
             return None
         
         # Get active projects
         projects = self.get_active_projects()
         
-        print(f"🔍 [DEBUG] find_project: Searching for '{project_name}' (normalized: '{project_name_lower}')")
-        print(f"🔍 [DEBUG] find_project: Found {len(projects)} active projects")
-        
         if not projects:
-            print(f"🔍 [DEBUG] find_project: No active projects found")
             return None
-        
-        # Debug: print all available projects
-        print(f"🔍 [DEBUG] find_project: Available projects:")
-        for i, project in enumerate(projects):
-            name = project.get('name', '')
-            path = project.get('path', '')
-            print(f"🔍 [DEBUG]   {i+1}. '{name}' -> {path}")
         
         # Try exact match first
         for project in projects:
             name = project.get('name', '').lower()
             if name == project_name_lower:
-                path = project.get('path')
-                print(f"🔍 [DEBUG] find_project: Exact match found: '{project.get('name')}' -> {path}")
-                return path
+                return project.get('path')
         
         # Try fuzzy matching (contains match)
         for project in projects:
             name = project.get('name', '').lower()
             if project_name_lower in name or name in project_name_lower:
-                path = project.get('path')
-                print(f"🔍 [DEBUG] find_project: Contains match found: '{project.get('name')}' -> {path}")
-                return path
+                return project.get('path')
         
         # Try partial matching (word boundaries)
         for project in projects:
             name = project.get('name', '').lower()
             # Check if project name starts with the search term
             if name.startswith(project_name_lower):
-                path = project.get('path')
-                print(f"🔍 [DEBUG] find_project: Starts-with match found: '{project.get('name')}' -> {path}")
-                return path
+                return project.get('path')
             # Check if search term is a word in the project name
             words = name.split()
             search_words = project_name_lower.split()
             # Check if all search words are in project name
             if all(any(word.startswith(sw) or sw in word for word in words) for sw in search_words):
-                path = project.get('path')
-                print(f"🔍 [DEBUG] find_project: Word match found: '{project.get('name')}' -> {path}")
-                return path
+                return project.get('path')
         
-        print(f"🔍 [DEBUG] find_project: No match found for '{project_name}'")
         return None
     
     def _search_in_directory(self, directory: Path, file_name: str, max_depth: int = 3) -> List[str]:

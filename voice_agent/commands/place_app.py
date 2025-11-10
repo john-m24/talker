@@ -71,14 +71,11 @@ class PlaceAppCommand(Command):
             
             # Resolve project path if only project_name is provided
             if project_name and not project_path:
-                print(f"🔍 [DEBUG] place_app: Resolving project name '{project_name}'")
                 file_tracker = FileContextTracker(cache_manager=get_cache_manager())
                 resolved_path = file_tracker.find_project(project_name)
                 if resolved_path:
-                    print(f"🔍 [DEBUG] place_app: Resolved '{project_name}' -> {resolved_path}")
                     project_path = resolved_path
                 else:
-                    print(f"🔍 [DEBUG] place_app: Failed to resolve project name '{project_name}'")
                     print(f"Error: Could not find project '{project_name}'\n")
                     return False
             
