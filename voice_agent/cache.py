@@ -18,7 +18,6 @@ class CacheKeys:
     CHROME_TABS_RAW = "chrome_tabs_raw"
     PRESETS = "presets"
     LLM_RESPONSE = "llm_response:"
-    PREDICTIVE_COMMAND = "predictive_command:"
     COMMAND_PATTERNS = "command_patterns"
     COMMAND_FREQUENCY = "command_frequency"
     COMMAND_SEQUENCES = "command_sequences"
@@ -30,11 +29,6 @@ class CacheKeys:
     def llm_response(text_hash: str) -> str:
         """Generate LLM response cache key from text hash."""
         return f"{CacheKeys.LLM_RESPONSE}{text_hash}"
-    
-    @staticmethod
-    def predictive_command(command_hash: str) -> str:
-        """Generate predictive command cache key from command hash."""
-        return f"{CacheKeys.PREDICTIVE_COMMAND}{command_hash}"
 
 
 def get_cache_manager() -> Optional['CacheManager']:

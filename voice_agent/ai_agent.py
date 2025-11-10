@@ -13,7 +13,7 @@ from .cache import CacheKeys, get_cache_manager
 class AIAgent:
     """AI agent that uses OpenAI-compatible API to parse user commands."""
     
-    def __init__(self, endpoint: Optional[str] = None, model: Optional[str] = None, cache_manager=None, predictive_cache=None):
+    def __init__(self, endpoint: Optional[str] = None, model: Optional[str] = None, cache_manager=None):
         """
         Initialize the AI agent.
         
@@ -21,13 +21,11 @@ class AIAgent:
             endpoint: LLM endpoint URL (defaults to config value)
             model: Model name (defaults to config value)
             cache_manager: CacheManager instance for LLM response caching (optional)
-            predictive_cache: PredictiveCommandCache instance for pre-computed commands (optional)
         """
         self.endpoint = endpoint or LLM_ENDPOINT
         self.model = model or LLM_MODEL
         # Fall back to global cache manager if not provided (for testing/mocking support)
         self.cache_manager = cache_manager if cache_manager is not None else get_cache_manager()
-        self.predictive_cache = predictive_cache
         self.pattern_matcher = PatternMatcher()
         
         # Initialize OpenAI client with custom endpoint
@@ -68,24 +66,9 @@ class AIAgent:
         # Normalize input text
         normalized_text = text.lower().strip()
         
-        # Tier 0: Check predictive cache first (instant, 0ms - pre-computed commands)
-        if self.predictive_cache:
-            precomputed_result = self.predictive_cache.get_precomputed(normalized_text)
-            if precomputed_result is not None:
-                # Validate context after cache hit
-                validated_result = self._validate_context(
-                    precomputed_result,
-                    running_apps,
-                    installed_apps or [],
-                    available_presets
-                )
-                return validated_result
-        
         # Tier 1: Check hardcoded commands (instant, 0ms)
         hardcoded_result = get_hardcoded_command(normalized_text)
         if hardcoded_result is not None:
-            # Don't update predictive cache for executed commands
-            # Executed commands should use LLM cache (text-only keys) to avoid parameter conflicts
             return hardcoded_result
         
         # Tier 2: Try pattern matching (fast, ~10-50ms, no LLM)
@@ -96,8 +79,6 @@ class AIAgent:
             available_presets
         )
         if pattern_result is not None:
-            # Don't update predictive cache for executed commands
-            # Executed commands should use LLM cache (text-only keys) to avoid parameter conflicts
             return pattern_result
         
         # Tier 3: Fall back to LLM with text-only cache (slow, ~500-2000ms, only when needed)
@@ -457,10 +438,6 @@ class AIAgent:
                 if cache_key and self.cache_manager:
                     # Cache with no TTL (text-only key means context changes don't invalidate)
                     self.cache_manager.set(cache_key, result, ttl=0)
-                
-                # Don't update predictive cache for executed commands
-                # Executed commands should use LLM cache (text-only keys) to avoid parameter conflicts
-                # The predictive cache is only for pre-computed commands from background pre-computation
                 
                 return result
             except json.JSONDecodeError as e:
