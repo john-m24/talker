@@ -80,6 +80,15 @@ class Config:
         # are still valid.
         self.llm_cache_enabled = os.getenv("VOICE_AGENT_LLM_CACHE_ENABLED", "true").lower() == "true"
         
+        # Predictive cache configuration (UX-focused, aggressive pre-computation)
+        # Pre-computes likely commands in the background to provide instant responses
+        # Uses AI liberally for best UX (since AI is free)
+        self.predictive_cache_enabled = os.getenv("VOICE_AGENT_PREDICTIVE_CACHE_ENABLED", "true").lower() == "true"
+        self.predictive_cache_update_interval = float(os.getenv("VOICE_AGENT_PREDICTIVE_CACHE_UPDATE_INTERVAL", "2.0"))
+        self.predictive_cache_max_commands = int(os.getenv("VOICE_AGENT_PREDICTIVE_CACHE_MAX_COMMANDS", "100"))
+        self.predictive_cache_ai_enabled = os.getenv("VOICE_AGENT_PREDICTIVE_CACHE_AI_ENABLED", "true").lower() == "true"
+        self.predictive_cache_ai_thread_pool_size = int(os.getenv("VOICE_AGENT_PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE", "5"))
+        
         # Monitor coordinates for multi-monitor window placement
         # Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
         # Coordinates are absolute screen coordinates
@@ -156,6 +165,11 @@ AUTOCOMPLETE_ENABLED = _config.autocomplete_enabled
 AUTOCOMPLETE_MAX_SUGGESTIONS = _config.autocomplete_max_suggestions
 WEB_PORT = _config.web_port
 LLM_CACHE_ENABLED = _config.llm_cache_enabled
+PREDICTIVE_CACHE_ENABLED = _config.predictive_cache_enabled
+PREDICTIVE_CACHE_UPDATE_INTERVAL = _config.predictive_cache_update_interval
+PREDICTIVE_CACHE_MAX_COMMANDS = _config.predictive_cache_max_commands
+PREDICTIVE_CACHE_AI_ENABLED = _config.predictive_cache_ai_enabled
+PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE = _config.predictive_cache_ai_thread_pool_size
 
 __all__ = [
     "Config",
@@ -177,4 +191,9 @@ __all__ = [
     "AUTOCOMPLETE_MAX_SUGGESTIONS",
     "WEB_PORT",
     "LLM_CACHE_ENABLED",
+    "PREDICTIVE_CACHE_ENABLED",
+    "PREDICTIVE_CACHE_UPDATE_INTERVAL",
+    "PREDICTIVE_CACHE_MAX_COMMANDS",
+    "PREDICTIVE_CACHE_AI_ENABLED",
+    "PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE",
 ]

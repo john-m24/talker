@@ -14,7 +14,10 @@ from .commands import CommandExecutor
 from .config import (
     LLM_ENDPOINT, STT_ENGINE, HOTKEY, TEXT_HOTKEY, WHISPER_MODEL,
     CACHE_ENABLED, CACHE_HISTORY_SIZE, CACHE_HISTORY_PATH,
-    AUTOCOMPLETE_ENABLED, AUTOCOMPLETE_MAX_SUGGESTIONS, LLM_CACHE_ENABLED
+    AUTOCOMPLETE_ENABLED, AUTOCOMPLETE_MAX_SUGGESTIONS, LLM_CACHE_ENABLED,
+    PREDICTIVE_CACHE_ENABLED, PREDICTIVE_CACHE_UPDATE_INTERVAL,
+    PREDICTIVE_CACHE_MAX_COMMANDS, PREDICTIVE_CACHE_AI_ENABLED,
+    PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE
 )
 from .cache import initialize_cache_manager, get_cache_manager
 from .hotkey import HotkeyListener
@@ -229,14 +232,82 @@ def main():
         except Exception as e:
             print(f"Warning: Could not initialize cache manager: {e}\n")
     
-    # Initialize AI agent
-    try:
-        agent = AIAgent(cache_manager=get_cache_manager() if LLM_CACHE_ENABLED else None)
-        print("AI agent initialized successfully.\n")
-    except Exception as e:
-        print(f"Error initializing AI agent: {e}")
-        print("Please check your LLM endpoint configuration.")
-        sys.exit(1)
+    # Initialize predictive cache (if enabled)
+    predictive_cache = None
+    background_context_updater = None
+    if PREDICTIVE_CACHE_ENABLED:
+        try:
+            from .predictive_cache import (
+                CommandPatternAnalyzer, BackgroundContextUpdater,
+                NonAIPrecomputer, AIPrecomputer, CommandPrioritizer,
+                PredictiveCommandCache
+            )
+            from .pattern_matcher import PatternMatcher
+            
+            # Initialize components
+            cache_manager = get_cache_manager()
+            pattern_analyzer = CommandPatternAnalyzer(cache_manager=cache_manager)
+            pattern_matcher = PatternMatcher()
+            non_ai_precomputer = NonAIPrecomputer(pattern_matcher)
+            
+            # Initialize AI agent first (needed for AI pre-computer)
+            agent = AIAgent(cache_manager=cache_manager if LLM_CACHE_ENABLED else None)
+            
+            # Initialize AI pre-computer with agent
+            ai_precomputer = AIPrecomputer(
+                agent=agent,
+                thread_pool_size=PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE if PREDICTIVE_CACHE_AI_ENABLED else 0
+            )
+            
+            # Initialize prioritizer
+            prioritizer = CommandPrioritizer(pattern_analyzer)
+            
+            # Initialize predictive cache
+            predictive_cache = PredictiveCommandCache(
+                cache_manager=cache_manager,
+                pattern_analyzer=pattern_analyzer,
+                non_ai_precomputer=non_ai_precomputer,
+                ai_precomputer=ai_precomputer,
+                prioritizer=prioritizer,
+                agent=agent
+            )
+            
+            # Initialize background context updater
+            def on_context_change(old_context, new_context):
+                """Callback when context changes significantly."""
+                if predictive_cache:
+                    predictive_cache.invalidate_on_context_change(old_context, new_context)
+            
+            background_context_updater = BackgroundContextUpdater(
+                update_interval=PREDICTIVE_CACHE_UPDATE_INTERVAL,
+                on_context_change=on_context_change
+            )
+            background_context_updater.start()
+            
+            # Initial aggressive pre-computation
+            initial_context = background_context_updater.get_current_context()
+            if initial_context:
+                predictive_cache.precompute_aggressively(initial_context)
+            
+            # Update AI agent with predictive cache
+            agent.predictive_cache = predictive_cache
+            
+            print("Predictive cache initialized.\n")
+        except Exception as e:
+            print(f"Warning: Could not initialize predictive cache: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fall back to regular AI agent
+            agent = AIAgent(cache_manager=get_cache_manager() if LLM_CACHE_ENABLED else None)
+    else:
+        # Initialize AI agent without predictive cache
+        try:
+            agent = AIAgent(cache_manager=get_cache_manager() if LLM_CACHE_ENABLED else None)
+            print("AI agent initialized successfully.\n")
+        except Exception as e:
+            print(f"Error initializing AI agent: {e}")
+            print("Please check your LLM endpoint configuration.")
+            sys.exit(1)
     
     # Initialize autocomplete engine
     autocomplete_engine = None
@@ -342,6 +413,10 @@ def main():
                     print("Goodbye!")
                     voice_hotkey_listener.stop()
                     text_hotkey_listener.stop()
+                    if background_context_updater:
+                        background_context_updater.stop()
+                    if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
+                        predictive_cache.ai_precomputer.shutdown()
                     if whisper_engine is not None:
                         whisper_engine._stop_persistent_stream()
                     break
@@ -371,6 +446,10 @@ def main():
                     print("Goodbye!")
                     voice_hotkey_listener.stop()
                     text_hotkey_listener.stop()
+                    if background_context_updater:
+                        background_context_updater.stop()
+                    if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
+                        predictive_cache.ai_precomputer.shutdown()
                     if whisper_engine is not None:
                         whisper_engine._stop_persistent_stream()
                     break
@@ -381,6 +460,10 @@ def main():
             print("\n\nInterrupted. Goodbye!")
             voice_hotkey_listener.stop()
             text_hotkey_listener.stop()
+            if background_context_updater:
+                background_context_updater.stop()
+            if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
+                predictive_cache.ai_precomputer.shutdown()
             if whisper_engine is not None:
                 whisper_engine._stop_persistent_stream()
             break
