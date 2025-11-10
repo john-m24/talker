@@ -78,21 +78,12 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
         
         raw_output = stdout if stdout else None
         
-        # DEBUG: Show what Chrome actually returned
-        print(f"\n{'='*80}")
-        print(f"DEBUG: Raw AppleScript output from Chrome:")
-        print(f"{'='*80}")
-        print(f"{raw_output}")
-        print(f"{'='*80}\n")
-        
         # Parse the result
         # AppleScript now returns one tab per line with ||| delimiter:
         # Format: globalIndex|||title|||url|||windowIndex|||localIndex|||isActive
         tabs = []
         if stdout:
             lines = stdout.strip().split('\n')
-            
-            print(f"DEBUG: Parsing {len(lines)} line(s) from AppleScript output")
             
             for line_num, line in enumerate(lines, 1):
                 line = line.strip()
@@ -103,7 +94,6 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
                 parts = line.split('|||')
                 
                 if len(parts) != 6:
-                    print(f"DEBUG: Line {line_num} has {len(parts)} parts (expected 6), skipping: {line[:100]}...")
                     continue
                 
                 try:
@@ -127,20 +117,9 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
                         "is_active": is_active
                     })
                     
-                    # DEBUG: Show parsed tab
-                    if line_num <= 5:  # Show first 5 tabs
-                        title_preview = title[:40] + "..." if len(title) > 40 else title
-                        print(f"DEBUG: Parsed tab {global_index}: '{title_preview}'")
-                    
                 except (ValueError, IndexError) as e:
-                    print(f"Warning: Failed to parse line {line_num}: {line[:100]}... Error: {e}")
+                    print(f"Warning: Failed to parse tab {line_num}: {e}")
                     continue
-        
-        # DEBUG: Final summary
-        print(f"DEBUG: Successfully parsed {len(tabs)} tab(s) total")
-        if tabs:
-            print(f"DEBUG: Tab indices: {[tab['index'] for tab in tabs]}")
-        print()
         
         return tabs, raw_output
     except Exception as e:
