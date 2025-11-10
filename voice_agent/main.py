@@ -17,7 +17,7 @@ from .config import (
     AUTOCOMPLETE_ENABLED, AUTOCOMPLETE_MAX_SUGGESTIONS, LLM_CACHE_ENABLED,
     PREDICTIVE_CACHE_ENABLED, PREDICTIVE_CACHE_UPDATE_INTERVAL,
     PREDICTIVE_CACHE_MAX_COMMANDS, PREDICTIVE_CACHE_AI_ENABLED,
-    PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE
+    PREDICTIVE_CACHE_AI_THREAD_POOL_SIZE, FILE_CONTEXT_ENABLED
 )
 from .cache import initialize_cache_manager, get_cache_manager
 from .hotkey import HotkeyListener
@@ -76,7 +76,10 @@ def handle_clarification(
     installed_apps: list,
     chrome_tabs: Optional[list],
     chrome_tabs_raw: Optional[str],
-    available_presets: Optional[list] = None
+    available_presets: Optional[list] = None,
+    recent_files: Optional[list] = None,
+    active_projects: Optional[list] = None,
+    current_project: Optional[dict] = None
 ) -> Tuple[str, dict]:
     """
     Handle clarification dialog if needed.
@@ -120,7 +123,13 @@ def handle_clarification(
         
         # Re-parse intent with corrected text
         start_llm = time.time()
-        intent = agent.parse_intent(text, running_apps, installed_apps, chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, available_presets=available_presets)
+        intent = agent.parse_intent(
+            text, running_apps, installed_apps, 
+            chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, 
+            available_presets=available_presets,
+            recent_files=recent_files, active_projects=active_projects, 
+            current_project=current_project
+        )
         llm_time = time.time() - start_llm
         print(f"⏱️  LLM (Re-parsing) took: {llm_time:.2f}s\n")
     else:
@@ -138,7 +147,10 @@ def process_command(
     chrome_tabs: Optional[list],
     chrome_tabs_raw: Optional[str],
     available_presets: Optional[list],
-    command_executor: CommandExecutor
+    command_executor: CommandExecutor,
+    recent_files: Optional[list] = None,
+    active_projects: Optional[list] = None,
+    current_project: Optional[dict] = None
 ) -> bool:
     """
     Process a command from text input (voice or text mode).
@@ -152,6 +164,9 @@ def process_command(
         chrome_tabs_raw: Raw AppleScript output for Chrome tabs (if available)
         available_presets: List of available preset names
         command_executor: Command executor instance
+        recent_files: List of recently opened files (optional)
+        active_projects: List of active projects (optional)
+        current_project: Current project dict (optional)
         
     Returns:
         True if command was processed successfully, False otherwise
@@ -168,12 +183,19 @@ def process_command(
     intent_result = time_operation(
         "LLM (Intent Parsing)",
         agent.parse_intent,
-        text, running_apps, installed_apps, chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, available_presets=available_presets
+        text, running_apps, installed_apps, 
+        chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, 
+        available_presets=available_presets,
+        recent_files=recent_files, active_projects=active_projects, 
+        current_project=current_project
     )
     
     # Handle clarification if needed
     text, intent_result = handle_clarification(
-        text, intent_result, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets
+        text, intent_result, agent, running_apps, installed_apps, 
+        chrome_tabs, chrome_tabs_raw, available_presets,
+        recent_files=recent_files, active_projects=active_projects, 
+        current_project=current_project
     )
     
     if text is None or intent_result is None:
@@ -186,7 +208,14 @@ def process_command(
         print(f"✓ Detected {len(commands_list)} commands\n")
     
     # Execute command(s) using command executor
-    command_executor.execute(intent_result, running_apps=running_apps, chrome_tabs=chrome_tabs)
+    command_executor.execute(
+        intent_result, 
+        running_apps=running_apps, 
+        chrome_tabs=chrome_tabs,
+        recent_files=recent_files,
+        active_projects=active_projects,
+        current_project=current_project
+    )
     
     # Track command in history (if cache is enabled)
     cache_manager = get_cache_manager()
@@ -350,6 +379,17 @@ def main():
         print("Please check your Accessibility permissions in System Settings.")
         sys.exit(1)
     
+    # Initialize file context tracker if enabled
+    file_tracker = None
+    if FILE_CONTEXT_ENABLED:
+        try:
+            from .file_context import FileContextTracker
+            file_tracker = FileContextTracker(cache_manager=cache_manager)
+            print("📁 File context tracking enabled\n")
+        except Exception as e:
+            print(f"Warning: Failed to initialize file context tracker: {e}\n")
+            file_tracker = None
+    
     # Main loop - wait for hotkey, then process command
     print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
     
@@ -363,6 +403,18 @@ def main():
             chrome_tabs_raw = None
             if running_apps and "Google Chrome" in running_apps:
                 chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
+            
+            # Get file context if enabled
+            recent_files = None
+            active_projects = None
+            current_project = None
+            if file_tracker:
+                try:
+                    recent_files = file_tracker.get_recent_files()
+                    active_projects = file_tracker.get_active_projects()
+                    current_project = file_tracker.get_current_project()
+                except Exception as e:
+                    print(f"Warning: Failed to fetch file context: {e}")
             
             # Check for voice hotkey press
             voice_pressed = voice_hotkey_listener.wait_for_hotkey(timeout=0.1)
@@ -405,7 +457,9 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
+                    recent_files=recent_files, active_projects=active_projects,
+                    current_project=current_project
                 )
                 
                 if not should_continue:
@@ -440,7 +494,9 @@ def main():
                     
                     # Process the command
                     should_continue = process_command(
-                        text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
+                        text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
+                        recent_files=recent_files, active_projects=active_projects,
+                        current_project=current_project
                     )
                     
                     if not should_continue:

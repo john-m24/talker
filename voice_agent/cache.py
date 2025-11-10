@@ -22,6 +22,9 @@ class CacheKeys:
     COMMAND_PATTERNS = "command_patterns"
     COMMAND_FREQUENCY = "command_frequency"
     COMMAND_SEQUENCES = "command_sequences"
+    RECENT_FILES = "recent_files"
+    ACTIVE_PROJECTS = "active_projects"
+    CURRENT_PROJECT = "current_project"
     
     @staticmethod
     def llm_response(text_hash: str) -> str:

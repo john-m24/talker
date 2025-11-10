@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 from .base import Command
 from .list_apps import ListAppsCommand
 from .list_tabs import ListTabsCommand
+from .list_recent_files import ListRecentFilesCommand
+from .list_projects import ListProjectsCommand
 from .focus_app import FocusAppCommand
 from .place_app import PlaceAppCommand
 from .switch_tab import SwitchTabCommand
@@ -20,6 +22,8 @@ class CommandExecutor:
         self.commands: List[Command] = [
             ListAppsCommand(),
             ListTabsCommand(),
+            ListRecentFilesCommand(),
+            ListProjectsCommand(),
             FocusAppCommand(),
             PlaceAppCommand(),
             SwitchTabCommand(),
@@ -28,7 +32,7 @@ class CommandExecutor:
             ActivatePresetCommand(),
         ]
     
-    def execute(self, intent: Any, running_apps: list = None, chrome_tabs: list = None) -> bool:
+    def execute(self, intent: Any, running_apps: list = None, chrome_tabs: list = None, recent_files: list = None, active_projects: list = None, current_project: dict = None) -> bool:
         """
         Execute command(s) based on the parsed intent(s).
         
@@ -68,6 +72,12 @@ class CommandExecutor:
                         enhanced_intent["running_apps"] = running_apps
                     if chrome_tabs is not None:
                         enhanced_intent["chrome_tabs"] = chrome_tabs
+                    if recent_files is not None:
+                        enhanced_intent["recent_files"] = recent_files
+                    if active_projects is not None:
+                        enhanced_intent["active_projects"] = active_projects
+                    if current_project is not None:
+                        enhanced_intent["current_project"] = current_project
                     
                     success = command.execute(enhanced_intent)
                     if not success:

@@ -43,7 +43,10 @@ class AIAgent:
         installed_apps: Optional[List[str]] = None,
         chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None,
         chrome_tabs_raw: Optional[str] = None,
-        available_presets: Optional[List[str]] = None
+        available_presets: Optional[List[str]] = None,
+        recent_files: Optional[List[Dict]] = None,
+        active_projects: Optional[List[Dict]] = None,
+        current_project: Optional[Dict] = None
     ) -> Dict[str, Union[List[Dict], bool, Optional[str]]]:
         """
         Parse user command text into structured intents (supports single or multiple commands).
@@ -122,16 +125,44 @@ class AIAgent:
             "",
             "Available commands:",
             "- 'list_apps' or 'list applications' - list running applications",
-            "- 'focus_app' - bring an application to the front (will launch the app if it's not running)",
-            "- 'place_app' - move an application window to a specific monitor (main, right, or left) (will launch the app if it's not running)",
+            "- 'focus_app' - bring an application to the front (will launch the app if it's not running). Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
+            "- 'place_app' - move an application window to a specific monitor (main, right, or left) (will launch the app if it's not running). Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
             "- 'switch_tab' - switch to a specific Chrome tab",
             "- 'list_tabs' - list all open Chrome tabs",
             "- 'close_app' - quit/close an application completely",
             "- 'close_tab' - close a specific Chrome tab",
             "- 'activate_preset' - activate a named preset window layout",
+            "- 'list_recent_files' - list recently opened files",
+            "- 'list_projects' - list active projects",
             "",
             f"Currently running applications: {', '.join(running_apps) if running_apps else 'None'}",
         ]
+        
+        # Add file context if available
+        if recent_files:
+            # Prioritize code files in context
+            code_files = [f for f in recent_files if f.get('type') == 'code']
+            other_files = [f for f in recent_files if f.get('type') != 'code']
+            top_files = (code_files[:10] + other_files[:5])[:10]
+            
+            if top_files:
+                file_names = [f.get('name', '') for f in top_files]
+                context_parts.append(
+                    f"Recently opened files (top 10, prioritizing code files): {', '.join(file_names)}"
+                )
+        
+        if current_project:
+            project_name = current_project.get('name', 'Unknown')
+            project_path = current_project.get('path', '')
+            context_parts.append(
+                f"Current project: {project_name} ({project_path})"
+            )
+        
+        if active_projects:
+            project_names = [p.get('name', '') for p in active_projects[:5]]
+            context_parts.append(
+                f"Active projects: {', '.join(project_names)}"
+            )
         
         # Add available presets context if presets are configured
         if available_presets:
@@ -208,8 +239,12 @@ class AIAgent:
             "- 'clarification_reason': (string, optional) brief explanation of why clarification is needed, or null if not needed",
             "",
             "Each intent object in the 'commands' array should have:",
-            "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', 'list_tabs', 'close_app', 'close_tab', or 'activate_preset'",
+            "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', 'list_tabs', 'close_app', 'close_tab', 'activate_preset', 'list_recent_files', or 'list_projects'",
             "- 'app_name': (for focus_app, place_app, and close_app, string, required) the exact application name - prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running) (non-empty string)",
+            "- 'file_path': (for focus_app and place_app, string, optional) exact file path to open in the app",
+            "- 'file_name': (for focus_app and place_app, string, optional) file name for fuzzy matching (use this if user says 'open x file in app' or 'open x file in app on monitor')",
+            "- 'project_path': (for focus_app and place_app, string, optional) exact project/folder path to open in the app",
+            "- 'project_name': (for focus_app and place_app, string, optional) project/folder name for fuzzy matching (use this if user says 'open x project in app' or 'open x folder in app on monitor')",
             "- 'monitor': (for place_app, enum, required) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
             "- 'maximize': (for place_app, boolean, optional) true if user wants to maximize the window, false otherwise (default: false)",
             "- 'tab_index': (for switch_tab, integer, required) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab (positive integer, 1-based)",
@@ -222,12 +257,20 @@ class AIAgent:
             "- 'place X on [monitor] and maximize' -> type: 'place_app', monitor: [monitor], maximize: true",
             "- 'show X on [monitor]' -> type: 'place_app', monitor: [monitor]",
             "- 'open X on [monitor]' -> type: 'place_app', monitor: [monitor]",
+            "- 'open X file in Y app on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor]",
+            "- 'open X in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor]",
+            "- 'put X file in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor]",
+            "- 'open X project in Y app on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor]",
+            "- 'open X folder in Y on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor]",
+            "- 'open X project in Y on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor]",
             "",
             "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
             "If no matching app is found in running apps, use the closest match from installed apps.",
             "IMPORTANT: focus_app and place_app commands can open apps even if they're not currently running - the system will launch them automatically.",
             "When the user says 'open [App]' or 'launch [App]', use type 'focus_app' - it will launch the app if needed.",
             "If the user wants to place an app on a monitor, use type 'place_app' and extract the monitor name.",
+            "If the user says 'open X file in Y app on [monitor]', use type 'place_app' with app_name: Y, file_name: X, and monitor: [monitor].",
+            "If the user says 'open X project in Y app on [monitor]' or 'open X folder in Y on [monitor]', use type 'place_app' with app_name: Y, project_name: X, and monitor: [monitor].",
             "If the user wants to switch tabs, you MUST analyze ALL open tabs and select the best match.",
             "CRITICAL: You have access to RAW Chrome tabs data from AppleScript. Parse this raw data to find ALL tabs.",
             "The raw data format is: globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, nextGlobalIndex, \"nextTitle\", ...",

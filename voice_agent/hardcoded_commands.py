@@ -20,6 +20,16 @@ HARDCODED_COMMANDS: Dict[str, Dict[str, Any]] = {
     "show tabs": {"type": "list_tabs"},
     "tabs": {"type": "list_tabs"},
     
+    # List recent files commands
+    "list recent files": {"type": "list_recent_files"},
+    "show recent files": {"type": "list_recent_files"},
+    "recent files": {"type": "list_recent_files"},
+    
+    # List projects commands
+    "list projects": {"type": "list_projects"},
+    "show projects": {"type": "list_projects"},
+    "projects": {"type": "list_projects"},
+    
     # Note: "quit", "exit", "q" are handled in main.py process_command()
     # They return False to exit the main loop
 }

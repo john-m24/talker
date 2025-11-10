@@ -238,10 +238,11 @@ class BackgroundContextUpdater:
                 time.sleep(self.update_interval)
     
     def update_context(self):
-        """Fetch current context (apps, tabs, presets) and update cache."""
+        """Fetch current context (apps, tabs, presets, files) and update cache."""
         from .window_control import list_running_apps, list_installed_apps
         from .tab_control import list_chrome_tabs_with_content
         from .presets import load_presets, list_presets
+        from .config import FILE_CONTEXT_ENABLED
         
         # Fetch current context
         running_apps = list_running_apps()
@@ -255,6 +256,21 @@ class BackgroundContextUpdater:
         presets = load_presets()
         available_presets = list_presets(presets) if presets else []
         
+        # Add file context if enabled
+        recent_files = []
+        active_projects = []
+        current_project = None
+        if FILE_CONTEXT_ENABLED:
+            try:
+                from .file_context import FileContextTracker
+                from .cache import get_cache_manager
+                file_tracker = FileContextTracker(cache_manager=get_cache_manager())
+                recent_files = file_tracker.get_recent_files()
+                active_projects = file_tracker.get_active_projects()
+                current_project = file_tracker.get_current_project()
+            except Exception as e:
+                print(f"Warning: Failed to fetch file context: {e}")
+        
         # Check if context changed significantly
         old_context = self.current_context.copy()
         new_context = {
@@ -262,7 +278,10 @@ class BackgroundContextUpdater:
             'installed_apps': installed_apps,
             'chrome_tabs': chrome_tabs,
             'chrome_tabs_raw': chrome_tabs_raw,
-            'available_presets': available_presets
+            'available_presets': available_presets,
+            'recent_files': recent_files,
+            'active_projects': active_projects,
+            'current_project': current_project
         }
         
         with self._lock:
@@ -293,6 +312,27 @@ class BackgroundContextUpdater:
         
         # Check if presets changed
         if set(old.get('available_presets', [])) != set(new.get('available_presets', [])):
+            return True
+        
+        # Check if current project changed
+        old_project = old.get('current_project')
+        new_project = new.get('current_project')
+        if old_project != new_project:
+            # Check if project path changed
+            if old_project and new_project:
+                if old_project.get('path') != new_project.get('path'):
+                    return True
+            elif old_project or new_project:
+                return True
+        
+        # Check if recent files changed significantly (top 5)
+        old_files = old.get('recent_files', [])[:5]
+        new_files = new.get('recent_files', [])[:5]
+        if len(old_files) != len(new_files):
+            return True
+        old_file_paths = {f.get('path') for f in old_files if isinstance(f, dict)}
+        new_file_paths = {f.get('path') for f in new_files if isinstance(f, dict)}
+        if old_file_paths != new_file_paths:
             return True
         
         return False
