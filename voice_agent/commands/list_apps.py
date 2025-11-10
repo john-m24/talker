@@ -13,7 +13,15 @@ class ListAppsCommand(Command):
     
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list apps command."""
-        running_apps = intent.get("running_apps", [])
+        # Force fresh data by invalidating cache before getting running_apps
+        from ..cache import get_cache_manager, CacheKeys
+        cache_manager = get_cache_manager()
+        if cache_manager:
+            cache_manager.invalidate(CacheKeys.RUNNING_APPS)
+        
+        # Now get fresh running_apps data
+        from ..window_control import list_running_apps
+        running_apps = list_running_apps()
         
         # Always use web dialog - create one if it doesn't exist
         try:

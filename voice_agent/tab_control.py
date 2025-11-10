@@ -1,6 +1,5 @@
 """Tab control functions for browsers using AppleScript."""
 
-import re
 import time
 from typing import List, Optional, Dict, Union, Tuple
 from urllib.parse import urlparse
@@ -48,7 +47,7 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
     try:
         script = '''
         tell application "Google Chrome"
-            set tabList to {}
+            set tabData to ""
             set globalTabIndex to 1
             set windowIndex to 1
             repeat with w in windows
@@ -58,13 +57,17 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
                     set isActive to (localTabIndex = activeTabIndex)
                     set tabTitle to title of t
                     set tabURL to URL of t
-                    set end of tabList to {globalTabIndex, tabTitle, tabURL, windowIndex, localTabIndex, isActive}
+                    -- Use ||| as delimiter to avoid parsing issues with commas in titles/URLs
+                    if tabData is not "" then
+                        set tabData to tabData & linefeed
+                    end if
+                    set tabData to tabData & (globalTabIndex as text) & "|||" & tabTitle & "|||" & tabURL & "|||" & (windowIndex as text) & "|||" & (localTabIndex as text) & "|||" & (isActive as text)
                     set globalTabIndex to globalTabIndex + 1
                     set localTabIndex to localTabIndex + 1
                 end repeat
                 set windowIndex to windowIndex + 1
             end repeat
-            return tabList
+            return tabData
         end tell
         '''
         success, stdout, stderr = _executor.execute(script, check=True)
@@ -75,117 +78,69 @@ def list_chrome_tabs() -> tuple[List[Dict[str, Union[str, int, bool]]], Optional
         
         raw_output = stdout if stdout else None
         
+        # DEBUG: Show what Chrome actually returned
+        print(f"\n{'='*80}")
+        print(f"DEBUG: Raw AppleScript output from Chrome:")
+        print(f"{'='*80}")
+        print(f"{raw_output}")
+        print(f"{'='*80}\n")
+        
         # Parse the result
-        # AppleScript returns either:
-        # - With braces: {1, "Title", "URL", 1, 1, true}, {2, "Title", "URL", 1, 2, false}
-        # - Without braces: 1, "Title", "URL", 1, 1, true, 2, "Title", "URL", 1, 2, false
+        # AppleScript now returns one tab per line with ||| delimiter:
+        # Format: globalIndex|||title|||url|||windowIndex|||localIndex|||isActive
         tabs = []
         if stdout:
-            # Use findall to find ALL tab entries in the string
-            # Pattern: number, "quoted string", "quoted string", number, number, true/false
-            pattern = r'(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+),\s*(\d+),\s*(true|false)'
-            matches = re.findall(pattern, stdout)
+            lines = stdout.strip().split('\n')
             
-            if matches:
-                # Found matches using regex - process all of them
-                for match in matches:
-                    try:
-                        global_index = int(match[0])
-                        title = match[1]
-                        url = match[2]
-                        window_index = int(match[3])
-                        local_index = int(match[4])
-                        is_active = match[5].lower() == "true"
-                        
-                        # Extract domain from URL
-                        domain = _extract_domain(url)
-                        
-                        tabs.append({
-                            "index": global_index,
-                            "title": title,
-                            "url": url,
-                            "domain": domain,
-                            "window_index": window_index,
-                            "local_index": local_index,
-                            "is_active": is_active
-                        })
-                    except (ValueError, IndexError) as e:
-                        print(f"Warning: Failed to parse tab entry: {match}... Error: {e}")
-                        continue
-            else:
-                # Fallback: try splitting by }, { for brace format
-                if "}, {" in stdout:
-                    tab_entries = stdout.split("}, {")
-                else:
-                    # Single tab case or no braces
-                    tab_entries = [stdout]
+            print(f"DEBUG: Parsing {len(lines)} line(s) from AppleScript output")
+            
+            for line_num, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
                 
-                for entry in tab_entries:
-                    # Clean up the entry
-                    entry = entry.strip()
-                    # Remove outer braces
-                    if entry.startswith("{"):
-                        entry = entry[1:]
-                    if entry.endswith("}"):
-                        entry = entry[:-1]
-                    entry = entry.strip()
+                # Split by ||| delimiter
+                parts = line.split('|||')
+                
+                if len(parts) != 6:
+                    print(f"DEBUG: Line {line_num} has {len(parts)} parts (expected 6), skipping: {line[:100]}...")
+                    continue
+                
+                try:
+                    global_index = int(parts[0])
+                    title = parts[1]
+                    url = parts[2]
+                    window_index = int(parts[3])
+                    local_index = int(parts[4])
+                    is_active = parts[5].lower() == "true"
                     
-                    if not entry:
-                        continue
+                    # Extract domain from URL
+                    domain = _extract_domain(url)
                     
-                    # Try regex again on individual entry
-                    match = re.match(pattern, entry)
-                    if match:
-                        try:
-                            global_index = int(match.group(1))
-                            title = match.group(2)
-                            url = match.group(3)
-                            window_index = int(match.group(4))
-                            local_index = int(match.group(5))
-                            is_active = match.group(6).lower() == "true"
-                            
-                            domain = _extract_domain(url)
-                            
-                            tabs.append({
-                                "index": global_index,
-                                "title": title,
-                                "url": url,
-                                "domain": domain,
-                                "window_index": window_index,
-                                "local_index": local_index,
-                                "is_active": is_active
-                            })
-                        except (ValueError, IndexError) as e:
-                            print(f"Warning: Failed to parse tab entry: {entry[:100]}... Error: {e}")
-                            continue
-                    else:
-                        # Last resort: split by comma (may fail if titles/URLs contain commas)
-                        parts = [p.strip().strip('"') for p in entry.split(", ")]
-                        if len(parts) >= 6:
-                            try:
-                                global_index = int(parts[0])
-                                title = parts[1]
-                                url = parts[2]
-                                window_index = int(parts[3])
-                                local_index = int(parts[4])
-                                is_active = parts[5].lower() == "true"
-                                
-                                domain = _extract_domain(url)
-                                
-                                tabs.append({
-                                    "index": global_index,
-                                    "title": title,
-                                    "url": url,
-                                    "domain": domain,
-                                    "window_index": window_index,
-                                    "local_index": local_index,
-                                    "is_active": is_active
-                                })
-                            except (ValueError, IndexError) as e:
-                                print(f"Warning: Failed to parse tab entry (fallback): {entry[:100]}... Error: {e}")
-                                continue
-                        else:
-                            print(f"Warning: Tab entry has {len(parts)} parts, expected 6: {entry[:100]}...")
+                    tabs.append({
+                        "index": global_index,
+                        "title": title,
+                        "url": url,
+                        "domain": domain,
+                        "window_index": window_index,
+                        "local_index": local_index,
+                        "is_active": is_active
+                    })
+                    
+                    # DEBUG: Show parsed tab
+                    if line_num <= 5:  # Show first 5 tabs
+                        title_preview = title[:40] + "..." if len(title) > 40 else title
+                        print(f"DEBUG: Parsed tab {global_index}: '{title_preview}'")
+                    
+                except (ValueError, IndexError) as e:
+                    print(f"Warning: Failed to parse line {line_num}: {line[:100]}... Error: {e}")
+                    continue
+        
+        # DEBUG: Final summary
+        print(f"DEBUG: Successfully parsed {len(tabs)} tab(s) total")
+        if tabs:
+            print(f"DEBUG: Tab indices: {[tab['index'] for tab in tabs]}")
+        print()
         
         return tabs, raw_output
     except Exception as e:

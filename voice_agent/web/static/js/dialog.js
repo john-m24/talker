@@ -277,7 +277,7 @@ function submitCommand(command) {
 
 let resultsPollInterval = null;
 let resultsPollAttempts = 0;
-const MAX_RESULT_POLL_ATTEMPTS = 20; // 10 seconds (20 * 500ms)
+const MAX_RESULT_POLL_ATTEMPTS = 120; // 60 seconds (120 * 500ms) - allows time for slow operations like fetching Chrome tab content
 
 function startResultsPolling() {
     // Stop any existing polling
@@ -290,7 +290,7 @@ function startResultsPolling() {
     resultsPollInterval = setInterval(() => {
         resultsPollAttempts++;
         
-        // Stop polling after max attempts (most commands don't produce results)
+        // Stop polling after max attempts (gives plenty of time for slow commands)
         if (resultsPollAttempts >= MAX_RESULT_POLL_ATTEMPTS) {
             stopResultsPolling();
             return;

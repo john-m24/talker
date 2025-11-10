@@ -56,8 +56,8 @@ class Config:
         
         # Cache configuration
         self.cache_enabled = os.getenv("VOICE_AGENT_CACHE_ENABLED", "true").lower() == "true"
-        self.cache_apps_ttl = float(os.getenv("VOICE_AGENT_CACHE_APPS_TTL", "10"))
-        self.cache_tabs_ttl = float(os.getenv("VOICE_AGENT_CACHE_TABS_TTL", "10"))
+        self.cache_apps_ttl = float(os.getenv("VOICE_AGENT_CACHE_APPS_TTL", "2"))  # 2 seconds for fresh data
+        self.cache_tabs_ttl = float(os.getenv("VOICE_AGENT_CACHE_TABS_TTL", "5"))  # 5 seconds for tabs
         self.cache_presets_ttl = float(os.getenv("VOICE_AGENT_CACHE_PRESETS_TTL", "60"))
         self.cache_history_size = int(os.getenv("VOICE_AGENT_CACHE_HISTORY_SIZE", "100"))
         self.cache_history_path = os.getenv("VOICE_AGENT_CACHE_HISTORY_PATH", os.path.expanduser("~/.voice_agent_history.json"))

@@ -13,7 +13,16 @@ class ListTabsCommand(Command):
     
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list tabs command."""
-        chrome_tabs = intent.get("chrome_tabs")
+        # Force fresh data by invalidating cache before getting chrome_tabs
+        from ..cache import get_cache_manager, CacheKeys
+        cache_manager = get_cache_manager()
+        if cache_manager:
+            cache_manager.invalidate(CacheKeys.CHROME_TABS)
+            cache_manager.invalidate(CacheKeys.CHROME_TABS_RAW)
+        
+        # Now get fresh chrome_tabs data
+        from ..tab_control import list_chrome_tabs_with_content
+        chrome_tabs, _ = list_chrome_tabs_with_content()
         
         # Always use web dialog - create one if it doesn't exist
         try:
@@ -44,8 +53,7 @@ class ListTabsCommand(Command):
                     # Format: "{index}. [{domain}]{active}{window}: {title}"
                     tab_line = f"{tab['index']}. [{domain}]{active}{window}: {title}"
                     if url:
-                        url_display = url[:60] + "..." if len(url) > 60 else url
-                        tab_line += f" | {url_display}"
+                        tab_line += f" | {url}"
                     items.append(tab_line)
             else:
                 items = ["Chrome is not running or has no tabs"]
@@ -68,8 +76,7 @@ class ListTabsCommand(Command):
                     # Format: "  {index}. [{domain}]{active}{window}: {title} | {url}"
                     tab_line = f"  {tab['index']}. [{domain}]{active}{window}: {title}"
                     if url:
-                        url_display = url[:60] + "..." if len(url) > 60 else url
-                        tab_line += f" | {url_display}"
+                        tab_line += f" | {url}"
                     print(tab_line)
                     
                     # Show content summary if available

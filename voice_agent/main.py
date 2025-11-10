@@ -483,6 +483,24 @@ def main():
                 
                 # Keep dialog open for follow-up commands (especially for list commands)
                 while True:
+                    # Refresh context data before each command to get latest state
+                    running_apps = list_running_apps()
+                    
+                    # Update chrome tabs if Chrome is running
+                    chrome_tabs = None
+                    chrome_tabs_raw = None
+                    if running_apps and "Google Chrome" in running_apps:
+                        chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
+                    
+                    # Refresh file context if enabled
+                    if file_tracker:
+                        try:
+                            recent_files = file_tracker.get_recent_files()
+                            active_projects = file_tracker.get_active_projects()
+                            current_project = file_tracker.get_current_project()
+                        except Exception as e:
+                            print(f"Warning: Failed to fetch file context: {e}")
+                    
                     text = show_text_input_dialog(
                         autocomplete_engine=autocomplete_engine
                     )
@@ -492,7 +510,7 @@ def main():
                         print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
                         break
                     
-                    # Process the command
+                    # Process the command with fresh data
                     should_continue = process_command(
                         text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
                         recent_files=recent_files, active_projects=active_projects,
