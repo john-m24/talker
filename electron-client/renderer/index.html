@@ -37,41 +37,58 @@
         background: #161616;
         box-sizing: border-box;
       }
-      .results {
-        margin-top: 8px;
+      .chat {
         max-height: 400px;
         overflow-y: auto;
         overflow-x: hidden;
+        margin-bottom: 8px;
+        padding: 8px 0;
+      }
+      .message {
+        margin-bottom: 12px;
+      }
+      .message-user {
+        text-align: right;
+      }
+      .message-user .message-bubble {
+        background: #2a2a2a;
+        display: inline-block;
+        padding: 8px 12px;
+        border-radius: 12px;
+        max-width: 80%;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+        color: #eaeaea;
+        font-size: 14px;
+      }
+      .message-system .message-bubble {
+        background: #1d1d1d;
+        padding: 12px;
         border-radius: 8px;
         border: 1px solid #333;
-        background: #161616;
-        box-sizing: border-box;
-        padding: 12px;
-        display: none;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
       }
-      .results.show {
-        display: block;
-      }
-      .results-title {
+      .message-title {
         font-weight: 600;
-        margin-bottom: 10px;
-        padding-bottom: 8px;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
         border-bottom: 1px solid #333;
         color: #eaeaea;
         font-size: 14px;
       }
-      .results-item {
-        padding: 6px 0;
+      .message-item {
+        padding: 4px 0;
         color: #d0d0d0;
         word-wrap: break-word;
         overflow-wrap: break-word;
         white-space: normal;
         line-height: 1.4;
+        font-size: 13px;
       }
-      .results-item:hover {
-        color: #eaeaea;
-      }
-      .results-error {
+      .message-error {
         color: #ff6b6b;
         padding: 4px 0;
       }
@@ -110,9 +127,9 @@
   </head>
   <body>
     <div class="container">
+      <div id="chat" class="chat"></div>
       <input id="q" class="input" type="text" placeholder="Type a command..." autocomplete="off" />
       <div id="list" class="list" hidden></div>
-      <div id="results" class="results"></div>
       <div class="actions">
         <button id="submitBtn" class="btn">Submit</button>
         <button id="closeBtn" class="btn">Close</button>

@@ -5,15 +5,13 @@
 
 	const q = document.getElementById('q')
 	const list = document.getElementById('list')
-	const results = document.getElementById('results')
+	const chat = document.getElementById('chat')
 	const submitBtn = document.getElementById('submitBtn')
 	const closeBtn = document.getElementById('closeBtn')
 	let suggestions = []
 	let activeIndex = -1
 	let debounceTimer = null
 	let resultsPollInterval = null
-	let resultsPollAttempts = 0
-	const MAX_RESULT_POLL_ATTEMPTS = 15 // 3 seconds (15 * 200ms)
 
 	function render() {
 		if (!suggestions || suggestions.length === 0) {
@@ -49,52 +47,47 @@
 		}
 	}
 
-	function displayResults(data) {
-		if (!data) {
-			results.classList.remove('show')
-			results.innerHTML = ''
-			// Show suggestions list again when results are cleared
-			if (suggestions.length > 0) {
-				list.hidden = false
-			}
-			// Notify main process to resize window after DOM update
-			setTimeout(() => {
-				if (window.palette && window.palette.resize) {
-					window.palette.resize()
-				}
-			}, 10)
-			return
-		}
+	function addUserMessage(text) {
+		const messageDiv = document.createElement('div')
+		messageDiv.className = 'message message-user'
+		messageDiv.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`
+		chat.appendChild(messageDiv)
+		scrollChatToBottom()
+		resizeWindow()
+	}
 
-		// Hide suggestions list when results are shown
-		list.hidden = true
-
+	function addSystemMessage(data) {
+		const messageDiv = document.createElement('div')
+		messageDiv.className = 'message message-system'
+		
+		let html = '<div class="message-bubble">'
+		
 		if (data.error) {
-			results.innerHTML = `<div class="results-error">${escapeHtml(data.error)}</div>`
-			results.classList.add('show')
-			// Notify main process to resize window after DOM update
-			setTimeout(() => {
-				if (window.palette && window.palette.resize) {
-					window.palette.resize()
-				}
-			}, 10)
-			return
-		}
-
-		if (data.title && data.items) {
-			let html = `<div class="results-title">${escapeHtml(data.title)}</div>`
+			html += `<div class="message-error">${escapeHtml(data.error)}</div>`
+		} else if (data.title && data.items) {
+			html += `<div class="message-title">${escapeHtml(data.title)}</div>`
 			data.items.forEach(item => {
-				html += `<div class="results-item">${escapeHtml(item)}</div>`
+				html += `<div class="message-item">${escapeHtml(item)}</div>`
 			})
-			results.innerHTML = html
-			results.classList.add('show')
-			// Notify main process to resize window after DOM update
-			setTimeout(() => {
-				if (window.palette && window.palette.resize) {
-					window.palette.resize()
-				}
-			}, 10)
 		}
+		
+		html += '</div>'
+		messageDiv.innerHTML = html
+		chat.appendChild(messageDiv)
+		scrollChatToBottom()
+		resizeWindow()
+	}
+
+	function scrollChatToBottom() {
+		chat.scrollTop = chat.scrollHeight
+	}
+
+	function resizeWindow() {
+		setTimeout(() => {
+			if (window.palette && window.palette.resize) {
+				window.palette.resize()
+			}
+		}, 10)
 	}
 
 	function stopResultsPolling() {
@@ -102,25 +95,12 @@
 			clearInterval(resultsPollInterval)
 			resultsPollInterval = null
 		}
-		resultsPollAttempts = 0
 	}
 
 	function startResultsPolling() {
 		stopResultsPolling()
-		resultsPollAttempts = 0
 
 		resultsPollInterval = setInterval(async () => {
-			resultsPollAttempts++
-
-			if (resultsPollAttempts >= MAX_RESULT_POLL_ATTEMPTS) {
-				stopResultsPolling()
-				// No results after timeout - auto-close
-				if (window.palette && window.palette.hide) {
-					window.palette.hide()
-				}
-				return
-			}
-
 			try {
 				const res = await fetch(`${API_BASE}/get-results`)
 				if (!res.ok) return
@@ -135,8 +115,8 @@
 						}
 						return
 					}
-					// Results received - display and keep open
-					displayResults(data.results)
+					// Results received - add to chat and keep open
+					addSystemMessage(data.results)
 					stopResultsPolling()
 					// Keep client open, focus input for follow-up
 					setTimeout(() => q.focus(), 0)
@@ -144,15 +124,24 @@
 			} catch (e) {
 				// Ignore errors
 			}
-		}, 200) // Poll every 200ms
+		}, 200) // Poll every 200ms - no timeout needed since we always get a response
 	}
 
 	async function submitCommand(text) {
 		const payload = { command: String(text || '').trim() }
 		if (!payload.command) return
 		
-		// Clear previous results
-		displayResults(null)
+		// Add user message to chat
+		addUserMessage(payload.command)
+		
+		// Clear input
+		q.value = ''
+		suggestions = []
+		activeIndex = -1
+		render()
+		
+		// Hide suggestions list
+		list.hidden = true
 		
 		try {
 			const res = await fetch(`${API_BASE}/submit`, {
@@ -162,14 +151,14 @@
 			})
 			if (!res.ok) {
 				console.error('submit failed', res.status)
-				displayResults({ error: 'Failed to submit command' })
+				addSystemMessage({ error: 'Failed to submit command' })
 				return
 			}
 			// Start polling for results
 			startResultsPolling()
 		} catch (e) {
 			console.error('submit error', e)
-			displayResults({ error: 'Error submitting command' })
+			addSystemMessage({ error: 'Error submitting command' })
 		}
 	}
 
@@ -185,10 +174,6 @@
 	q.addEventListener('input', () => {
 		activeIndex = -1
 		const text = q.value
-		// Hide results when user starts typing
-		if (results.classList.contains('show')) {
-			displayResults(null)
-		}
 		clearTimeout(debounceTimer)
 		debounceTimer = setTimeout(() => fetchSuggestions(text), 150)
 	})
@@ -242,15 +227,11 @@
 			q.value = ''
 			suggestions = []
 			activeIndex = -1
-			displayResults(null) // Clear results
+			chat.innerHTML = '' // Clear chat history
 			stopResultsPolling()
 			render()
 			// Reset window size after DOM update
-			setTimeout(() => {
-				if (window.palette && window.palette.resize) {
-					window.palette.resize()
-				}
-			}, 10)
+			resizeWindow()
 			setTimeout(() => q.focus(), 0)
 		})
 	}
