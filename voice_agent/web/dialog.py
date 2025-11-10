@@ -33,6 +33,11 @@ HTML_TEMPLATE = """
             margin-top: 0;
             color: #333;
         }
+        .input-wrapper {
+            position: relative;
+            width: 100%;
+            margin-bottom: 10px;
+        }
         #command-input {
             width: 100%;
             padding: 12px;
@@ -40,11 +45,23 @@ HTML_TEMPLATE = """
             border: 2px solid #ddd;
             border-radius: 4px;
             box-sizing: border-box;
-            margin-bottom: 10px;
+            background-color: transparent;
+            position: relative;
+            z-index: 2;
         }
         #command-input:focus {
             outline: none;
             border-color: #007AFF;
+        }
+        #ghost-text {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            font-size: 16px;
+            color: #999;
+            pointer-events: none;
+            z-index: 1;
+            white-space: pre;
         }
         #suggestions {
             margin-top: 10px;
@@ -114,7 +131,10 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h2>Voice Agent - Text Command</h2>
-        <input type="text" id="command-input" placeholder="Enter your command..." autofocus>
+        <div class="input-wrapper">
+            <input type="text" id="command-input" placeholder="Enter your command..." autofocus>
+            <div id="ghost-text"></div>
+        </div>
         <div id="suggestions"></div>
         <div class="buttons">
             <button id="cancel-button" onclick="cancel()">Cancel</button>
@@ -149,19 +169,30 @@ HTML_TEMPLATE = """
         let suggestions = [];
         let selectedIndex = -1;
         let debounceTimer = null;
+        let bestSuggestion = null;
 
         const input = document.getElementById('command-input');
         const suggestionsDiv = document.getElementById('suggestions');
+        const ghostText = document.getElementById('ghost-text');
 
         input.addEventListener('input', function() {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 fetchSuggestions(input.value);
             }, 100);
+            updateGhostText();
         });
 
         input.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowDown') {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                if (bestSuggestion && bestSuggestion.text) {
+                    // Complete with best suggestion and submit
+                    input.value = bestSuggestion.text;
+                    updateGhostText();
+                    submit();
+                }
+            } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 if (suggestions.length > 0) {
                     selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
@@ -171,24 +202,23 @@ HTML_TEMPLATE = """
                 e.preventDefault();
                 selectedIndex = Math.max(selectedIndex - 1, -1);
                 updateSuggestions();
-            } else if (e.key === 'Tab' && selectedIndex >= 0 && suggestions[selectedIndex]) {
-                e.preventDefault();
-                input.value = suggestions[selectedIndex].text;
-                suggestions = [];
-                selectedIndex = -1;
-                updateSuggestions();
             } else if (e.key === 'Enter') {
                 e.preventDefault();
                 if (selectedIndex >= 0 && suggestions[selectedIndex]) {
                     input.value = suggestions[selectedIndex].text;
                     suggestions = [];
                     selectedIndex = -1;
+                    bestSuggestion = null;
                     updateSuggestions();
+                    updateGhostText();
                 } else {
                     submit();
                 }
             } else if (e.key === 'Escape') {
                 cancel();
+            } else {
+                // Update ghost text on any other key press
+                setTimeout(updateGhostText, 0);
             }
         });
 
@@ -196,7 +226,9 @@ HTML_TEMPLATE = """
             if (!text) {
                 suggestions = [];
                 selectedIndex = -1;
+                bestSuggestion = null;
                 updateSuggestions();
+                updateGhostText();
                 return;
             }
 
@@ -204,14 +236,38 @@ HTML_TEMPLATE = """
                 .then(response => response.json())
                 .then(data => {
                     suggestions = data.suggestions || [];
+                    bestSuggestion = suggestions.length > 0 ? suggestions[0] : null;
                     selectedIndex = -1;
                     updateSuggestions();
+                    updateGhostText();
                 })
                 .catch(err => {
                     console.error('Error fetching suggestions:', err);
                     suggestions = [];
+                    bestSuggestion = null;
                     updateSuggestions();
+                    updateGhostText();
                 });
+        }
+
+        function updateGhostText() {
+            const currentText = input.value;
+            
+            if (!bestSuggestion || !bestSuggestion.text) {
+                ghostText.textContent = '';
+                return;
+            }
+
+            const suggestionText = bestSuggestion.text;
+            
+            // Check if suggestion starts with current text (case-insensitive)
+            if (suggestionText.toLowerCase().startsWith(currentText.toLowerCase()) && currentText.length > 0) {
+                // Show the remaining part as ghost text
+                const remaining = suggestionText.substring(currentText.length);
+                ghostText.textContent = currentText + remaining;
+            } else {
+                ghostText.textContent = '';
+            }
         }
 
         function updateSuggestions() {
@@ -229,7 +285,9 @@ HTML_TEMPLATE = """
                     input.value = suggestion.text;
                     suggestions = [];
                     selectedIndex = -1;
+                    bestSuggestion = null;
                     updateSuggestions();
+                    updateGhostText();
                 };
                 suggestionsDiv.appendChild(div);
             });
