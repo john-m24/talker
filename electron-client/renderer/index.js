@@ -19,7 +19,10 @@
 		}
 		list.hidden = false
 		list.innerHTML = suggestions
-			.map((s, i) => `<div class="item ${i === activeIndex ? 'active' : ''}" data-idx="${i}">${escapeHtml(s)}</div>`)
+			.map((s, i) => {
+				const label = (s && typeof s === 'object') ? (s.display || s.text || '') : String(s)
+				return `<div class="item ${i === activeIndex ? 'active' : ''}" data-idx="${i}">${escapeHtml(label)}</div>`
+			})
 			.join('')
 	}
 
@@ -66,7 +69,8 @@
 	function chooseActive() {
 		let text = q.value.trim()
 		if (activeIndex >= 0 && activeIndex < suggestions.length) {
-			text = suggestions[activeIndex]
+			const sel = suggestions[activeIndex]
+			text = (sel && typeof sel === 'object') ? String(sel.text || '') : String(sel || '')
 		}
 		submitCommand(text)
 	}
