@@ -5,11 +5,15 @@
 
 	const q = document.getElementById('q')
 	const list = document.getElementById('list')
+	const results = document.getElementById('results')
 	const submitBtn = document.getElementById('submitBtn')
 	const closeBtn = document.getElementById('closeBtn')
 	let suggestions = []
 	let activeIndex = -1
 	let debounceTimer = null
+	let resultsPollInterval = null
+	let resultsPollAttempts = 0
+	const MAX_RESULT_POLL_ATTEMPTS = 15 // 3 seconds (15 * 200ms)
 
 	function render() {
 		if (!suggestions || suggestions.length === 0) {
@@ -45,9 +49,77 @@
 		}
 	}
 
+	function displayResults(data) {
+		if (!data) {
+			results.classList.remove('show')
+			results.innerHTML = ''
+			return
+		}
+
+		if (data.error) {
+			results.innerHTML = `<div class="results-error">${escapeHtml(data.error)}</div>`
+			results.classList.add('show')
+			return
+		}
+
+		if (data.title && data.items) {
+			let html = `<div class="results-title">${escapeHtml(data.title)}</div>`
+			data.items.forEach(item => {
+				html += `<div class="results-item">${escapeHtml(item)}</div>`
+			})
+			results.innerHTML = html
+			results.classList.add('show')
+		}
+	}
+
+	function stopResultsPolling() {
+		if (resultsPollInterval) {
+			clearInterval(resultsPollInterval)
+			resultsPollInterval = null
+		}
+		resultsPollAttempts = 0
+	}
+
+	function startResultsPolling() {
+		stopResultsPolling()
+		resultsPollAttempts = 0
+
+		resultsPollInterval = setInterval(async () => {
+			resultsPollAttempts++
+
+			if (resultsPollAttempts >= MAX_RESULT_POLL_ATTEMPTS) {
+				stopResultsPolling()
+				// No results after timeout - auto-close
+				if (window.palette && window.palette.hide) {
+					window.palette.hide()
+				}
+				return
+			}
+
+			try {
+				const res = await fetch(`${API_BASE}/get-results`)
+				if (!res.ok) return
+				const data = await res.json()
+				if (data.results) {
+					// Results received - display and keep open
+					displayResults(data.results)
+					stopResultsPolling()
+					// Keep client open, focus input for follow-up
+					setTimeout(() => q.focus(), 0)
+				}
+			} catch (e) {
+				// Ignore errors
+			}
+		}, 200) // Poll every 200ms
+	}
+
 	async function submitCommand(text) {
 		const payload = { command: String(text || '').trim() }
 		if (!payload.command) return
+		
+		// Clear previous results
+		displayResults(null)
+		
 		try {
 			const res = await fetch(`${API_BASE}/submit`, {
 				method: 'POST',
@@ -56,13 +128,14 @@
 			})
 			if (!res.ok) {
 				console.error('submit failed', res.status)
+				displayResults({ error: 'Failed to submit command' })
+				return
 			}
-			// hide window
-			if (window.palette && window.palette.hide) {
-				window.palette.hide()
-			}
+			// Start polling for results
+			startResultsPolling()
 		} catch (e) {
 			console.error('submit error', e)
+			displayResults({ error: 'Error submitting command' })
 		}
 	}
 
@@ -131,6 +204,8 @@
 			q.value = ''
 			suggestions = []
 			activeIndex = -1
+			displayResults(null) // Clear results
+			stopResultsPolling()
 			render()
 			setTimeout(() => q.focus(), 0)
 		})

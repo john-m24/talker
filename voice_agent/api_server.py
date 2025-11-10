@@ -13,6 +13,15 @@ _app_instance: Optional[Flask] = None
 _server_thread: Optional[threading.Thread] = None
 _autocomplete_engine = None
 
+# Thread-safe flag for showing palette
+_show_palette_flag = False
+_show_palette_lock = threading.Lock()
+
+# Thread-safe results store
+_results_data: Optional[Dict[str, Any]] = None
+_results_consumed = False
+_results_lock = threading.Lock()
+
 
 def _build_context(cache_manager) -> Dict[str, Any]:
 	"""Build context dict consistent with existing web dialog suggest route."""
@@ -73,10 +82,41 @@ def _create_app() -> Flask:
 			command = str(data.get('command', '')).strip()
 			if not command:
 				return jsonify({'status': 'error', 'message': 'empty command'}), 400
+			# Clear previous results when submitting new command
+			global _results_data, _results_consumed
+			with _results_lock:
+				_results_data = None
+				_results_consumed = False
 			put_command(command)
 			return jsonify({'status': 'ok'})
 		except Exception as e:
 			return jsonify({'status': 'error', 'message': str(e)}), 500
+
+	@app.route("/show-palette", methods=["GET", "OPTIONS"])
+	def show_palette():
+		"""Check if palette should be shown (triggered by TEXT_HOTKEY)."""
+		if request.method == "OPTIONS":
+			return ("", 204)
+		global _show_palette_flag
+		with _show_palette_lock:
+			should_show = _show_palette_flag
+			if should_show:
+				# Clear flag after reading
+				_show_palette_flag = False
+			return jsonify({"show": should_show})
+
+	@app.route("/get-results", methods=["GET", "OPTIONS"])
+	def get_results():
+		"""Get results if available (for list commands)."""
+		if request.method == "OPTIONS":
+			return ("", 204)
+		global _results_data, _results_consumed
+		with _results_lock:
+			if _results_data and not _results_consumed:
+				# Mark as consumed after first read
+				_results_consumed = True
+				return jsonify({"results": _results_data})
+			return jsonify({"results": None})
 
 	return app
 
@@ -97,5 +137,44 @@ def start_api_server(autocomplete_engine, port: int = 8770) -> None:
 
 	_server_thread = threading.Thread(target=run, daemon=True)
 	_server_thread.start()
+
+
+def trigger_palette() -> None:
+	"""Trigger the Electron palette to show (called when TEXT_HOTKEY is pressed)."""
+	global _show_palette_flag
+	with _show_palette_lock:
+		_show_palette_flag = True
+
+
+def send_results(title: str, items: List[str]) -> None:
+	"""
+	Send results to Electron client (for list commands).
+	
+	Args:
+		title: Title for the results
+		items: List of result items to display
+	"""
+	global _results_data, _results_consumed
+	with _results_lock:
+		_results_data = {
+			"title": title,
+			"items": items
+		}
+		_results_consumed = False
+
+
+def send_error(message: str) -> None:
+	"""
+	Send error message to Electron client.
+	
+	Args:
+		message: Error message to display
+	"""
+	global _results_data, _results_consumed
+	with _results_lock:
+		_results_data = {
+			"error": message
+		}
+		_results_consumed = False
 
 

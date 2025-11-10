@@ -66,13 +66,8 @@ class Config:
         self.autocomplete_enabled = os.getenv("VOICE_AGENT_AUTOCOMPLETE_ENABLED", "true").lower() == "true"
         self.autocomplete_max_suggestions = int(os.getenv("VOICE_AGENT_AUTOCOMPLETE_MAX_SUGGESTIONS", "5"))
         
-        # Web dialog configuration
-        self.web_port = int(os.getenv("VOICE_AGENT_WEB_PORT", "8765"))
-        self.web_browser = os.getenv("VOICE_AGENT_WEB_BROWSER", "Google Chrome")
         # Local API (for external UI clients like Electron)
         self.api_port = int(os.getenv("VOICE_AGENT_API_PORT", "8770"))
-        # Input mode: 'electron' | 'web' | 'applescript'
-        self.input_mode = os.getenv("VOICE_AGENT_INPUT_MODE", "electron").lower()
         
         # LLM cache configuration (optional)
         # Enables caching of LLM responses using text-only cache keys (normalized text hash)
@@ -165,10 +160,7 @@ CACHE_HISTORY_SIZE = _config.cache_history_size
 CACHE_HISTORY_PATH = _config.cache_history_path
 AUTOCOMPLETE_ENABLED = _config.autocomplete_enabled
 AUTOCOMPLETE_MAX_SUGGESTIONS = _config.autocomplete_max_suggestions
-WEB_PORT = _config.web_port
-WEB_BROWSER = _config.web_browser
 API_PORT = _config.api_port
-INPUT_MODE = _config.input_mode
 LLM_CACHE_ENABLED = _config.llm_cache_enabled
 CACHE_FILES_TTL = _config.cache_files_ttl
 FILE_CONTEXT_ENABLED = _config.file_context_enabled
@@ -193,10 +185,7 @@ __all__ = [
     "CACHE_HISTORY_PATH",
     "AUTOCOMPLETE_ENABLED",
     "AUTOCOMPLETE_MAX_SUGGESTIONS",
-    "WEB_PORT",
-    "WEB_BROWSER",
     "API_PORT",
-    "INPUT_MODE",
     "LLM_CACHE_ENABLED",
     "CACHE_FILES_TTL",
     "FILE_CONTEXT_ENABLED",

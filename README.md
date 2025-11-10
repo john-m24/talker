@@ -134,16 +134,11 @@ The agent will:
 
 **Note**: Uses offline speech recognition - no API keys, no internet connection, and no cloud services required! macOS native speech recognition provides the best performance and accuracy on macOS.
 
-### Text Mode
+### Text Mode (Electron Command Palette)
 
-Press `ctrl+alt` (or your configured `VOICE_AGENT_TEXT_HOTKEY`) to open a text input dialog. Type your command and press Enter to submit, or press Esc/Cancel to cancel.
+Press `ctrl+alt` (or your configured `VOICE_AGENT_TEXT_HOTKEY`) to open the Electron command palette. The Electron client provides a reliable, global-hotkey command palette with live autocomplete.
 
-Both voice and text modes work simultaneously - use whichever is more convenient!
-
-### Electron Command Palette (Cross‑platform, Autocomplete)
-
-Alternatively, you can use the bundled Electron client for a reliable, global-hotkey command palette with live autocomplete.
-
+**Setup:**
 1) Backend API is started automatically by the agent on `127.0.0.1:$VOICE_AGENT_API_PORT` (default `8770`).
 2) In a separate terminal:
 ```bash
@@ -151,18 +146,27 @@ cd electron-client
 npm install
 npm start
 ```
-3) Press the palette hotkey (default `Control+Alt+Space`) to open the input, type to see suggestions, Enter to submit, Esc to hide.
+3) Press `ctrl+alt` (or your configured `VOICE_AGENT_TEXT_HOTKEY`) to open the palette, type to see suggestions, Enter to submit, Esc to hide.
 
-Env vars:
+**Features:**
+- Live autocomplete as you type
+- Results display for list commands (keeps palette open for follow-up)
+- Auto-closes after action commands
+- Always-on-top window that focuses reliably
+
+**Env vars:**
 ```bash
 export VOICE_AGENT_API_PORT=8770            # Backend API port
-export VOICE_AGENT_ELECTRON_HOTKEY="Control+Alt+Space"
+export VOICE_AGENT_TEXT_HOTKEY="ctrl+alt"   # Hotkey to trigger palette
 ```
 
-Notes:
+**Notes:**
 - The Electron client uses local-only HTTP to fetch suggestions (`GET /suggest?text=...`) and submit commands (`POST /submit`).
 - The agent processes submitted commands immediately in the main loop.
-- The palette window is always-on-top and focuses reliably across platforms.
+- List commands (list apps, list tabs, etc.) display results in the palette and keep it open for follow-up commands.
+- Action commands (focus, place, close, etc.) auto-close the palette after execution.
+
+Both voice and text modes work simultaneously - use whichever is more convenient!
 
 ### Example Commands
 

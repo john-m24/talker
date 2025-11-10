@@ -19,33 +19,7 @@ def show_text_input_dialog(
     Returns:
         The entered text if user submits, or None if cancelled
     """
-    # Get cache manager from global instance
-    cache_manager = get_cache_manager()
-    
-    # Try web-based dialog with auto-complete if enabled and both engine and cache are provided
-    if AUTOCOMPLETE_ENABLED and autocomplete_engine and cache_manager:
-        try:
-            from .web.dialog import get_active_dialog
-            # Check if there's already an active dialog - reuse it for follow-up commands
-            active_dialog = get_active_dialog()
-            if active_dialog:
-                # Reuse existing dialog for follow-up commands
-                return active_dialog.show()
-            
-            # No active dialog, create a new one
-            from .web import WebTextInputDialog
-            dialog = WebTextInputDialog(autocomplete_engine, cache_manager)
-            return dialog.show()
-        except ImportError:
-            print("Warning: Flask not available, falling back to AppleScript dialog")
-            # Fallback to AppleScript dialog
-            pass
-        except Exception as e:
-            print(f"Error showing web dialog: {e}")
-            # Fallback to AppleScript dialog
-            pass
-    
-    # Fallback to AppleScript dialog (backward compatibility or when web dialog unavailable)
+    # Use AppleScript dialog (Electron client handles text input via hotkey)
     message = "Enter your command:"
     escaped_message = escape_applescript_string(message)
     

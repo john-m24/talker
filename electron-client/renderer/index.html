@@ -37,6 +37,37 @@
         background: #161616;
         box-sizing: border-box;
       }
+      .results {
+        margin-top: 8px;
+        max-height: 300px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        border-radius: 8px;
+        border: 1px solid #333;
+        background: #161616;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        display: none;
+      }
+      .results.show {
+        display: block;
+      }
+      .results-title {
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #eaeaea;
+      }
+      .results-item {
+        padding: 4px 0;
+        color: #d0d0d0;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+      }
+      .results-error {
+        color: #ff6b6b;
+        padding: 4px 0;
+      }
       .item {
         padding: 8px 10px;
         cursor: pointer;
@@ -72,6 +103,7 @@
   </head>
   <body>
     <div class="container">
+      <div id="results" class="results"></div>
       <input id="q" class="input" type="text" placeholder="Type a command..." autocomplete="off" />
       <div id="list" class="list" hidden></div>
       <div class="actions">

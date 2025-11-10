@@ -9,7 +9,6 @@ from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps
 from .tab_control import list_chrome_tabs_with_content
 from .clarification import show_clarification_dialog
-from .text_input import show_text_input_dialog
 from .commands import CommandExecutor
 from .config import (
     LLM_ENDPOINT, STT_ENGINE, HOTKEY, TEXT_HOTKEY, WHISPER_MODEL,
@@ -323,6 +322,7 @@ def main():
     if FILE_CONTEXT_ENABLED:
         try:
             from .file_context import FileContextTracker
+            cache_manager = get_cache_manager()
             file_tracker = FileContextTracker(cache_manager=cache_manager)
             print("📁 File context tracking enabled\n")
         except Exception as e:
@@ -433,71 +433,13 @@ def main():
                 print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
                 
             elif text_pressed:
-                # Text hotkey
-                from .config import INPUT_MODE
-                if INPUT_MODE == "electron":
-                    # Electron input surface handles UI; keep outer loop free to drain queue.
-                    print("✅ Text hotkey pressed! Electron input mode active - use the Electron palette.\n")
-                    continue
-                else:
-                    # Legacy web dialog flow
-                    print("✅ Text hotkey pressed! Opening text input dialog...\n")
-                    
-                    # Keep dialog open for follow-up commands (especially for list commands)
-                    while True:
-                        # Refresh context data before each command to get latest state
-                        running_apps = list_running_apps()
-                        
-                        # Update chrome tabs if Chrome is running
-                        chrome_tabs = None
-                        chrome_tabs_raw = None
-                        if running_apps and "Google Chrome" in running_apps:
-                            chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
-                        
-                        # Refresh file context if enabled
-                        if file_tracker:
-                            try:
-                                recent_files = file_tracker.get_recent_files()
-                                active_projects = file_tracker.get_active_projects()
-                                current_project = file_tracker.get_current_project()
-                            except Exception as e:
-                                print(f"Warning: Failed to fetch file context: {e}")
-                        
-                        text = show_text_input_dialog(
-                            autocomplete_engine=autocomplete_engine
-                        )
-                        
-                        if not text:
-                            # User cancelled
-                            print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
-                            break
-                        
-                        # Process the command with fresh data
-                        should_continue = process_command(
-                            text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
-                            recent_files=recent_files, active_projects=active_projects,
-                            current_project=current_project
-                        )
-                        
-                        if not should_continue:
-                            # Quit command
-                            print("Goodbye!")
-                            voice_hotkey_listener.stop()
-                            text_hotkey_listener.stop()
-                            if whisper_engine is not None:
-                                whisper_engine._stop_persistent_stream()
-                            return
-                        
-                        # Check if dialog is still open (for follow-up commands)
-                        from .web.dialog import get_active_dialog
-                        active_dialog = get_active_dialog()
-                        if not active_dialog:
-                            # Dialog closed, exit loop
-                            print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
-                            break
-                        
-                        # Dialog is still open, wait for next command
-                        # The dialog will handle showing results and waiting for follow-up
+                # Text hotkey - trigger Electron palette
+                try:
+                    from .api_server import trigger_palette
+                    trigger_palette()
+                    print("✅ Text hotkey pressed! Electron palette triggered.\n")
+                except Exception as e:
+                    print(f"Warning: Could not trigger Electron palette: {e}\n")
                 
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")

@@ -23,39 +23,27 @@ class ListAppsCommand(Command):
         from ..window_control import list_running_apps
         running_apps = list_running_apps()
         
-        # Always use web dialog - create one if it doesn't exist
+        # Format apps for display
+        if not running_apps:
+            items = ["No applications are currently running."]
+        else:
+            items = [f"{app}" for app in running_apps]
+        
+        # Send results to Electron client via API
         try:
-            from ..web.dialog import get_active_dialog, WebTextInputDialog
-            from ..cache import get_cache_manager
-            from ..autocomplete import AutocompleteEngine
-            from ..config import AUTOCOMPLETE_MAX_SUGGESTIONS
-            
-            active_dialog = get_active_dialog()
-            if not active_dialog:
-                # Create a new dialog if none exists
-                cache_manager = get_cache_manager()
-                autocomplete_engine = AutocompleteEngine(max_suggestions=AUTOCOMPLETE_MAX_SUGGESTIONS)
-                active_dialog = WebTextInputDialog(autocomplete_engine, cache_manager)
-                # Open the dialog
-                active_dialog.show()
-            
-            # Format apps for display
-            if not running_apps:
-                items = ["No applications are currently running."]
-            else:
-                items = [f"{app}" for app in running_apps]
-            
-            # Send results to dialog
-            active_dialog.send_results("Currently Running Applications", items)
-            return True
+            from ..api_server import send_results
+            send_results("Currently Running Applications", items)
         except Exception as e:
-            # If web dialog fails, fall back to console (shouldn't happen)
-            print(f"\nCurrently running applications:")
-            if running_apps:
-                for i, app in enumerate(running_apps, 1):
-                    print(f"  {i}. {app}")
-            else:
-                print("  No applications are currently running.")
-            print()
-            return True
+            # Fall back to console if API fails
+            pass
+        
+        # Also output to console as fallback
+        print(f"\nCurrently running applications:")
+        if running_apps:
+            for i, app in enumerate(running_apps, 1):
+                print(f"  {i}. {app}")
+        else:
+            print("  No applications are currently running.")
+        print()
+        return True
 
