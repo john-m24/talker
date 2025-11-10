@@ -48,6 +48,7 @@ HTML_TEMPLATE = """
             background-color: transparent;
             position: relative;
             z-index: 2;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         #command-input:focus {
             outline: none;
@@ -62,6 +63,19 @@ HTML_TEMPLATE = """
             pointer-events: none;
             z-index: 1;
             white-space: pre;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 0;
+            margin: 0;
+            border: none;
+            background: transparent;
+            line-height: 1.5;
+            overflow: hidden;
+        }
+        #ghost-text .ghost-prefix {
+            color: transparent;
+        }
+        #ghost-text .ghost-suffix {
+            color: #999;
         }
         #suggestions {
             margin-top: 10px;
@@ -299,9 +313,10 @@ HTML_TEMPLATE = """
             
             // Check if suggestion starts with current text (case-insensitive)
             if (suggestionText.toLowerCase().startsWith(currentText.toLowerCase()) && currentText.length > 0) {
-                // Show the remaining part as ghost text
+                // Show the full suggestion, but make the matching prefix transparent
+                // This ensures perfect alignment
                 const remaining = suggestionText.substring(currentText.length);
-                ghostText.textContent = currentText + remaining;
+                ghostText.innerHTML = '<span class="ghost-prefix">' + escapeHtml(currentText) + '</span><span class="ghost-suffix">' + escapeHtml(remaining) + '</span>';
             } else {
                 ghostText.textContent = '';
             }
