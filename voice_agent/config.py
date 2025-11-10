@@ -68,6 +68,11 @@ class Config:
         
         # Web dialog configuration
         self.web_port = int(os.getenv("VOICE_AGENT_WEB_PORT", "8765"))
+        self.web_browser = os.getenv("VOICE_AGENT_WEB_BROWSER", "Google Chrome")
+        # Local API (for external UI clients like Electron)
+        self.api_port = int(os.getenv("VOICE_AGENT_API_PORT", "8770"))
+        # Input mode: 'electron' | 'web' | 'applescript'
+        self.input_mode = os.getenv("VOICE_AGENT_INPUT_MODE", "electron").lower()
         
         # LLM cache configuration (optional)
         # Enables caching of LLM responses using text-only cache keys (normalized text hash)
@@ -170,6 +175,9 @@ CACHE_HISTORY_PATH = _config.cache_history_path
 AUTOCOMPLETE_ENABLED = _config.autocomplete_enabled
 AUTOCOMPLETE_MAX_SUGGESTIONS = _config.autocomplete_max_suggestions
 WEB_PORT = _config.web_port
+WEB_BROWSER = _config.web_browser
+API_PORT = _config.api_port
+INPUT_MODE = _config.input_mode
 LLM_CACHE_ENABLED = _config.llm_cache_enabled
 PREDICTIVE_CACHE_ENABLED = _config.predictive_cache_enabled
 PREDICTIVE_CACHE_UPDATE_INTERVAL = _config.predictive_cache_update_interval
@@ -200,6 +208,9 @@ __all__ = [
     "AUTOCOMPLETE_ENABLED",
     "AUTOCOMPLETE_MAX_SUGGESTIONS",
     "WEB_PORT",
+    "WEB_BROWSER",
+    "API_PORT",
+    "INPUT_MODE",
     "LLM_CACHE_ENABLED",
     "PREDICTIVE_CACHE_ENABLED",
     "PREDICTIVE_CACHE_UPDATE_INTERVAL",

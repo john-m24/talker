@@ -362,6 +362,15 @@ def main():
     # Initialize command executor
     command_executor = CommandExecutor()
     
+    # Start local API server for external UI clients (e.g., Electron)
+    try:
+        from .api_server import start_api_server
+        from .config import API_PORT
+        start_api_server(autocomplete_engine=autocomplete_engine, port=API_PORT)
+        print(f"Local API server started on http://127.0.0.1:{API_PORT}\n")
+    except Exception as e:
+        print(f"Warning: Could not start local API server: {e}\n")
+
     # Initialize hotkey listeners
     try:
         voice_hotkey_listener = HotkeyListener(hotkey=HOTKEY)
@@ -416,6 +425,30 @@ def main():
                 except Exception as e:
                     print(f"Warning: Failed to fetch file context: {e}")
             
+            # Drain any queued commands submitted via local API (e.g., Electron)
+            try:
+                from .command_queue import drain_commands
+                queued_commands = drain_commands(max_items=10)
+                for text in queued_commands:
+                    should_continue = process_command(
+                        text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
+                        recent_files=recent_files, active_projects=active_projects,
+                        current_project=current_project
+                    )
+                    if not should_continue:
+                        print("Goodbye!")
+                        voice_hotkey_listener.stop()
+                        text_hotkey_listener.stop()
+                        if background_context_updater:
+                            background_context_updater.stop()
+                        if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
+                            predictive_cache.ai_precomputer.shutdown()
+                        if whisper_engine is not None:
+                            whisper_engine._stop_persistent_stream()
+                        break
+            except Exception as e:
+                print(f"Warning: Failed to process queued commands: {e}")
+
             # Check for voice hotkey press
             voice_pressed = voice_hotkey_listener.wait_for_hotkey(timeout=0.1)
             
@@ -478,68 +511,75 @@ def main():
                 print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
                 
             elif text_pressed:
-                # Text mode: show input dialog
-                print("✅ Text hotkey pressed! Opening text input dialog...\n")
-                
-                # Keep dialog open for follow-up commands (especially for list commands)
-                while True:
-                    # Refresh context data before each command to get latest state
-                    running_apps = list_running_apps()
+                # Text hotkey
+                from .config import INPUT_MODE
+                if INPUT_MODE == "electron":
+                    # Electron input surface handles UI; keep outer loop free to drain queue.
+                    print("✅ Text hotkey pressed! Electron input mode active - use the Electron palette.\n")
+                    continue
+                else:
+                    # Legacy web dialog flow
+                    print("✅ Text hotkey pressed! Opening text input dialog...\n")
                     
-                    # Update chrome tabs if Chrome is running
-                    chrome_tabs = None
-                    chrome_tabs_raw = None
-                    if running_apps and "Google Chrome" in running_apps:
-                        chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
-                    
-                    # Refresh file context if enabled
-                    if file_tracker:
-                        try:
-                            recent_files = file_tracker.get_recent_files()
-                            active_projects = file_tracker.get_active_projects()
-                            current_project = file_tracker.get_current_project()
-                        except Exception as e:
-                            print(f"Warning: Failed to fetch file context: {e}")
-                    
-                    text = show_text_input_dialog(
-                        autocomplete_engine=autocomplete_engine
-                    )
-                    
-                    if not text:
-                        # User cancelled
-                        print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
-                        break
-                    
-                    # Process the command with fresh data
-                    should_continue = process_command(
-                        text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
-                        recent_files=recent_files, active_projects=active_projects,
-                        current_project=current_project
-                    )
-                    
-                    if not should_continue:
-                        # Quit command
-                        print("Goodbye!")
-                        voice_hotkey_listener.stop()
-                        text_hotkey_listener.stop()
-                        if background_context_updater:
-                            background_context_updater.stop()
-                        if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
-                            predictive_cache.ai_precomputer.shutdown()
-                        if whisper_engine is not None:
-                            whisper_engine._stop_persistent_stream()
-                        return
-                    
-                    # Check if dialog is still open (for follow-up commands)
-                    from .web.dialog import get_active_dialog
-                    active_dialog = get_active_dialog()
-                    if not active_dialog:
-                        # Dialog closed, exit loop
-                        print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
-                        break
-                    
-                    # Dialog is still open, wait for next command
-                    # The dialog will handle showing results and waiting for follow-up
+                    # Keep dialog open for follow-up commands (especially for list commands)
+                    while True:
+                        # Refresh context data before each command to get latest state
+                        running_apps = list_running_apps()
+                        
+                        # Update chrome tabs if Chrome is running
+                        chrome_tabs = None
+                        chrome_tabs_raw = None
+                        if running_apps and "Google Chrome" in running_apps:
+                            chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
+                        
+                        # Refresh file context if enabled
+                        if file_tracker:
+                            try:
+                                recent_files = file_tracker.get_recent_files()
+                                active_projects = file_tracker.get_active_projects()
+                                current_project = file_tracker.get_current_project()
+                            except Exception as e:
+                                print(f"Warning: Failed to fetch file context: {e}")
+                        
+                        text = show_text_input_dialog(
+                            autocomplete_engine=autocomplete_engine
+                        )
+                        
+                        if not text:
+                            # User cancelled
+                            print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
+                            break
+                        
+                        # Process the command with fresh data
+                        should_continue = process_command(
+                            text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
+                            recent_files=recent_files, active_projects=active_projects,
+                            current_project=current_project
+                        )
+                        
+                        if not should_continue:
+                            # Quit command
+                            print("Goodbye!")
+                            voice_hotkey_listener.stop()
+                            text_hotkey_listener.stop()
+                            if background_context_updater:
+                                background_context_updater.stop()
+                            if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
+                                predictive_cache.ai_precomputer.shutdown()
+                            if whisper_engine is not None:
+                                whisper_engine._stop_persistent_stream()
+                            return
+                        
+                        # Check if dialog is still open (for follow-up commands)
+                        from .web.dialog import get_active_dialog
+                        active_dialog = get_active_dialog()
+                        if not active_dialog:
+                            # Dialog closed, exit loop
+                            print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
+                            break
+                        
+                        # Dialog is still open, wait for next command
+                        # The dialog will handle showing results and waiting for follow-up
                 
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")

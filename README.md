@@ -140,6 +140,30 @@ Press `ctrl+alt` (or your configured `VOICE_AGENT_TEXT_HOTKEY`) to open a text i
 
 Both voice and text modes work simultaneously - use whichever is more convenient!
 
+### Electron Command Palette (Cross‑platform, Autocomplete)
+
+Alternatively, you can use the bundled Electron client for a reliable, global-hotkey command palette with live autocomplete.
+
+1) Backend API is started automatically by the agent on `127.0.0.1:$VOICE_AGENT_API_PORT` (default `8770`).
+2) In a separate terminal:
+```bash
+cd electron-client
+npm install
+npm start
+```
+3) Press the palette hotkey (default `Control+Alt+Space`) to open the input, type to see suggestions, Enter to submit, Esc to hide.
+
+Env vars:
+```bash
+export VOICE_AGENT_API_PORT=8770            # Backend API port
+export VOICE_AGENT_ELECTRON_HOTKEY="Control+Alt+Space"
+```
+
+Notes:
+- The Electron client uses local-only HTTP to fetch suggestions (`GET /suggest?text=...`) and submit commands (`POST /submit`).
+- The agent processes submitted commands immediately in the main loop.
+- The palette window is always-on-top and focuses reliably across platforms.
+
 ### Example Commands
 
 - **Focus an app**: "Bring Docker to view", "Focus Chrome", "Show Slack"

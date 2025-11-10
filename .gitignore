@@ -156,3 +156,9 @@ Thumbs.db
 # Project specific
 *.pyc
 presets.json
+
+# Electron client
+electron-client/node_modules/
+electron-client/dist/
+electron-client/out/
+electron-client/*.log
