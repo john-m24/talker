@@ -24,15 +24,28 @@ def list_running_apps() -> List[str]:
     
     # Cache miss - fetch from system
     try:
-        script = 'tell application "System Events" to get name of every process whose background only is false'
+        # Use linefeed delimiter to avoid issues with commas in app names
+        script = '''
+        tell application "System Events"
+            set appList to ""
+            set processList to every process whose background only is false
+            repeat with proc in processList
+                if appList is not "" then
+                    set appList to appList & linefeed
+                end if
+                set appList to appList & name of proc
+            end repeat
+            return appList
+        end tell
+        '''
         success, stdout, stderr = _executor.execute(script, check=True)
         
         if not success:
             print(f"Error listing running apps: {stderr}")
             return []
         
-        # Parse the comma-separated list
-        apps = [app.strip() for app in stdout.split(", ")] if stdout else []
+        # Parse the newline-separated list
+        apps = [app.strip() for app in stdout.strip().split('\n') if app.strip()] if stdout else []
         
         # Cache the result
         if cache_manager:
