@@ -25,6 +25,14 @@ def show_text_input_dialog(
     # Try web-based dialog with auto-complete if enabled and both engine and cache are provided
     if AUTOCOMPLETE_ENABLED and autocomplete_engine and cache_manager:
         try:
+            from .web.dialog import get_active_dialog
+            # Check if there's already an active dialog - reuse it for follow-up commands
+            active_dialog = get_active_dialog()
+            if active_dialog:
+                # Reuse existing dialog for follow-up commands
+                return active_dialog.show()
+            
+            # No active dialog, create a new one
             from .web import WebTextInputDialog
             dialog = WebTextInputDialog(autocomplete_engine, cache_manager)
             return dialog.show()

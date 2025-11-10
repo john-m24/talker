@@ -2,7 +2,6 @@
 
 from typing import Dict, Any
 from .base import Command
-from ..window_control import show_apps_list
 
 
 class ListAppsCommand(Command):
@@ -15,7 +14,33 @@ class ListAppsCommand(Command):
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list apps command."""
         running_apps = intent.get("running_apps", [])
-        show_apps_list(running_apps)
-        print()  # Keep a blank line for console output consistency
+        
+        # Check if web dialog is active - if so, send results there
+        try:
+            from ..web.dialog import get_active_dialog
+            active_dialog = get_active_dialog()
+            if active_dialog:
+                # Format apps for display
+                if not running_apps:
+                    items = ["No applications are currently running."]
+                else:
+                    items = [f"{app}" for app in running_apps]
+                
+                # Send results to dialog
+                active_dialog.send_results("Currently Running Applications", items)
+                print()  # Keep a blank line for console output consistency
+                return True
+        except ImportError:
+            pass
+        
+        # Fallback to console output (no popup)
+        print("\nCurrently running applications:")
+        if running_apps:
+            for i, app in enumerate(running_apps, 1):
+                print(f"  {i}. {app}")
+        else:
+            print("  No applications are currently running.")
+        print()
+        
         return True
 

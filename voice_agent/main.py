@@ -427,34 +427,45 @@ def main():
                 # Text mode: show input dialog
                 print("✅ Text hotkey pressed! Opening text input dialog...\n")
                 
-                text = show_text_input_dialog(
-                    autocomplete_engine=autocomplete_engine
-                )
-                
-                if not text:
-                    # User cancelled
-                    print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
-                    continue
-                
-                # Process the command
-                should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
-                )
-                
-                if not should_continue:
-                    # Quit command
-                    print("Goodbye!")
-                    voice_hotkey_listener.stop()
-                    text_hotkey_listener.stop()
-                    if background_context_updater:
-                        background_context_updater.stop()
-                    if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
-                        predictive_cache.ai_precomputer.shutdown()
-                    if whisper_engine is not None:
-                        whisper_engine._stop_persistent_stream()
-                    break
-                
-                print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
+                # Keep dialog open for follow-up commands (especially for list commands)
+                while True:
+                    text = show_text_input_dialog(
+                        autocomplete_engine=autocomplete_engine
+                    )
+                    
+                    if not text:
+                        # User cancelled
+                        print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
+                        break
+                    
+                    # Process the command
+                    should_continue = process_command(
+                        text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
+                    )
+                    
+                    if not should_continue:
+                        # Quit command
+                        print("Goodbye!")
+                        voice_hotkey_listener.stop()
+                        text_hotkey_listener.stop()
+                        if background_context_updater:
+                            background_context_updater.stop()
+                        if predictive_cache and hasattr(predictive_cache.ai_precomputer, 'shutdown'):
+                            predictive_cache.ai_precomputer.shutdown()
+                        if whisper_engine is not None:
+                            whisper_engine._stop_persistent_stream()
+                        return
+                    
+                    # Check if dialog is still open (for follow-up commands)
+                    from .web.dialog import get_active_dialog
+                    active_dialog = get_active_dialog()
+                    if not active_dialog:
+                        # Dialog closed, exit loop
+                        print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
+                        break
+                    
+                    # Dialog is still open, wait for next command
+                    # The dialog will handle showing results and waiting for follow-up
                 
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")

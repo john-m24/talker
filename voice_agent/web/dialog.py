@@ -126,11 +126,48 @@ HTML_TEMPLATE = """
             color: #999;
             font-size: 14px;
         }
+        #results {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        #results.show {
+            display: block;
+        }
+        .results-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .result-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+            color: #333;
+        }
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        .result-item-number {
+            color: #666;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .result-item-content {
+            color: #333;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Voice Agent - Text Command</h2>
+        <div id="results"></div>
         <div class="input-wrapper">
             <input type="text" id="command-input" placeholder="Enter your command..." autofocus>
             <div id="ghost-text"></div>
@@ -301,18 +338,101 @@ HTML_TEMPLATE = """
 
         function submit() {
             const command = input.value;
+            // Check if it's a list command - if so, don't close immediately
+            const isListCommand = /^(list|show)\s+(apps|applications|tabs)/i.test(command) || 
+                                /^(apps|applications|tabs)$/i.test(command.trim());
+            
             fetch('/submit', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: command})
+                body: JSON.stringify({command: command, keep_open: isListCommand})
             })
             .then(() => {
-                window.close();
+                if (isListCommand) {
+                    // Clear input and wait for results
+                    input.value = '';
+                    input.placeholder = 'Waiting for results...';
+                    input.disabled = true;
+                    // Poll for results
+                    pollForResults();
+                } else {
+                    window.close();
+                }
             })
             .catch(err => {
                 console.error('Error submitting:', err);
                 window.close();
             });
+        }
+
+        function pollForResults() {
+            let pollInterval = null;
+            let hasReceivedResults = false;
+            
+            // Poll for results every 200ms
+            pollInterval = setInterval(() => {
+                if (hasReceivedResults) {
+                    clearInterval(pollInterval);
+                    return;
+                }
+                
+                fetch('/get-results')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.results && !hasReceivedResults) {
+                            hasReceivedResults = true;
+                            clearInterval(pollInterval);
+                            showResults(data.results);
+                            input.placeholder = 'Enter follow-up command...';
+                            input.disabled = false;
+                            input.focus();
+                        } else if (data.consumed && !data.results) {
+                            // Results were already consumed, stop polling
+                            hasReceivedResults = true;
+                            clearInterval(pollInterval);
+                            input.placeholder = 'Enter your command...';
+                            input.disabled = false;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error polling for results:', err);
+                        // On error, stop polling after a few attempts
+                        clearInterval(pollInterval);
+                        input.placeholder = 'Enter your command...';
+                        input.disabled = false;
+                    });
+            }, 200);
+            
+            // Stop polling after 10 seconds
+            setTimeout(() => {
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                }
+                if (input.disabled) {
+                    input.placeholder = 'Enter your command...';
+                    input.disabled = false;
+                }
+            }, 10000);
+        }
+
+        function showResults(results) {
+            const resultsDiv = document.getElementById('results');
+            if (!results || !results.items || results.items.length === 0) {
+                resultsDiv.innerHTML = '';
+                resultsDiv.classList.remove('show');
+                return;
+            }
+            
+            let html = `<div class="results-title">${escapeHtml(results.title || 'Results')}</div>`;
+            results.items.forEach((item, index) => {
+                html += `<div class="result-item"><span class="result-item-number">${index + 1}.</span><span class="result-item-content">${escapeHtml(item)}</span></div>`;
+            });
+            
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('show');
+            
+            // Scroll results into view
+            resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function cancel() {
@@ -331,6 +451,21 @@ HTML_TEMPLATE = """
 """
 
 
+
+
+# Module-level variable to store active dialog instance
+_active_dialog: Optional['WebTextInputDialog'] = None
+
+
+def get_active_dialog() -> Optional['WebTextInputDialog']:
+    """Get the currently active dialog instance."""
+    return _active_dialog
+
+
+def set_active_dialog(dialog: Optional['WebTextInputDialog']):
+    """Set the currently active dialog instance."""
+    global _active_dialog
+    _active_dialog = dialog
 
 
 def _find_available_port(start_port: int, max_attempts: int = 10) -> int:
@@ -375,6 +510,9 @@ class WebTextInputDialog:
         self.app = Flask(__name__)
         self.server_thread = None
         self.shutdown_event = threading.Event()
+        self.command_ready_event = threading.Event()  # Signal when a command is ready
+        self.results = None
+        self.results_lock = threading.Lock()
         self._setup_routes()
     
     def _setup_routes(self):
@@ -408,16 +546,51 @@ class WebTextInputDialog:
         @self.app.route('/submit', methods=['POST'])
         def submit():
             data = request.json
-            self.result = data.get('command', '')
-            # Signal shutdown
-            self.shutdown_event.set()
-            # Try to shutdown server (works with Werkzeug development server)
-            try:
-                func = request.environ.get('werkzeug.server.shutdown')
-                if func:
-                    func()
-            except Exception:
-                pass
+            command = data.get('command', '')
+            keep_open = data.get('keep_open', False)
+            
+            # Store command for processing
+            self.result = command
+            
+            # Clear previous results when submitting new command
+            with self.results_lock:
+                self.results = None
+            
+            if not keep_open:
+                # Signal shutdown for non-list commands
+                self.shutdown_event.set()
+                # Try to shutdown server (works with Werkzeug development server)
+                try:
+                    func = request.environ.get('werkzeug.server.shutdown')
+                    if func:
+                        func()
+                except Exception:
+                    pass
+            else:
+                # For list commands, signal that command is ready (but don't shutdown)
+                self.command_ready_event.set()
+            return jsonify({'status': 'ok'})
+        
+        @self.app.route('/get-results', methods=['GET'])
+        def get_results():
+            """Get results if available."""
+            with self.results_lock:
+                if self.results:
+                    results = self.results
+                    # Don't clear immediately - keep results until next command
+                    # This prevents race conditions with polling
+                    return jsonify({'results': results, 'consumed': False})
+                return jsonify({'results': None, 'consumed': True})
+        
+        @self.app.route('/show-results', methods=['POST'])
+        def show_results():
+            """Set results to display in the dialog."""
+            data = request.json
+            with self.results_lock:
+                self.results = {
+                    'title': data.get('title', 'Results'),
+                    'items': data.get('items', [])
+                }
             return jsonify({'status': 'ok'})
         
         @self.app.route('/cancel', methods=['POST'])
@@ -436,89 +609,130 @@ class WebTextInputDialog:
     
     def show(self) -> Optional[str]:
         """Show dialog and return entered text or None if cancelled."""
-        # Find available port
-        self.port = _find_available_port(self.port)
+        # Set as active dialog
+        set_active_dialog(self)
         
-        # Reset shutdown event
-        self.shutdown_event.clear()
+        # Check if server is already running (for follow-up commands)
+        server_already_running = self.server_thread and self.server_thread.is_alive()
         
-        # Start server in background thread
-        self.server_thread = threading.Thread(
-            target=lambda: self.app.run(port=self.port, debug=False, use_reloader=False, host='127.0.0.1')
-        )
-        self.server_thread.daemon = True
-        self.server_thread.start()
-        
-        # Wait a moment for server to start
-        time.sleep(0.5)
-        
-        # Open browser in popup window (macOS) - centered on screen
-        url = f'http://127.0.0.1:{self.port}'
-        
-        # Window dimensions (keep original small size)
-        window_width = 600
-        window_height = 500
-        
-        # Detect default browser and open in popup window (only one browser)
-        try:
-            default_browser = webbrowser.get()
-            browser_name = default_browser.name.lower()
+        if not server_already_running:
+            # Find available port
+            self.port = _find_available_port(self.port)
             
-            # Determine which browser to use
-            if 'chrome' in browser_name:
-                browser_app = "Google Chrome"
-            elif 'safari' in browser_name:
-                browser_app = "Safari"
-            else:
-                # For other browsers, just use regular webbrowser.open()
-                browser_app = None
+            # Reset events
+            self.shutdown_event.clear()
+            self.command_ready_event.clear()
             
-            if browser_app:
-                # Use AppleScript to open in popup window (centered)
-                script = f'''
-                tell application "{browser_app}"
-                    activate
-                    set newWindow to make new window
-                    set URL of active tab of newWindow to "{url}"
-                    -- Get screen dimensions and center the window
-                    tell application "System Events"
-                        set screenSize to size of desktop
-                        set screenWidth to item 1 of screenSize
-                        set screenHeight to item 2 of screenSize
-                    end tell
-                    set leftPos to (screenWidth - {window_width}) / 2
-                    set topPos to (screenHeight - {window_height}) / 2
-                    set rightPos to leftPos + {window_width}
-                    set bottomPos to topPos + {window_height}
-                    set bounds of newWindow to {{leftPos, topPos, rightPos, bottomPos}}
-                end tell
-                '''
-                result = subprocess.run(
-                    ["osascript", "-e", script],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode != 0 or result.stderr:
-                    # If AppleScript failed, fall back to regular browser open
-                    webbrowser.open(url)
-            else:
-                # For non-Chrome/Safari browsers, use regular webbrowser.open()
-                webbrowser.open(url)
-        except Exception as e:
-            # If anything fails, fall back to regular browser open
-            print(f"Warning: Could not open browser in popup mode: {e}")
+            # Start server in background thread
+            self.server_thread = threading.Thread(
+                target=lambda: self.app.run(port=self.port, debug=False, use_reloader=False, host='127.0.0.1')
+            )
+            self.server_thread.daemon = True
+            self.server_thread.start()
+            
+            # Wait a moment for server to start
+            time.sleep(0.5)
+            
+            # Open browser in popup window (macOS) - centered on screen
+            url = f'http://127.0.0.1:{self.port}'
+        
+            # Window dimensions (keep original small size)
+            window_width = 600
+            window_height = 500
+            
+            # Detect default browser and open in popup window (only one browser)
             try:
-                webbrowser.open(url)
-            except Exception as e2:
-                print(f"Warning: Could not open browser: {e2}")
-                # Server will still run, user can manually open browser
+                default_browser = webbrowser.get()
+                browser_name = default_browser.name.lower()
+                
+                # Determine which browser to use
+                if 'chrome' in browser_name:
+                    browser_app = "Google Chrome"
+                elif 'safari' in browser_name:
+                    browser_app = "Safari"
+                else:
+                    # For other browsers, just use regular webbrowser.open()
+                    browser_app = None
+                
+                if browser_app:
+                    # Use AppleScript to open in popup window (centered)
+                    script = f'''
+                    tell application "{browser_app}"
+                        activate
+                        set newWindow to make new window
+                        set URL of active tab of newWindow to "{url}"
+                        -- Get screen dimensions and center the window
+                        tell application "System Events"
+                            set screenSize to size of desktop
+                            set screenWidth to item 1 of screenSize
+                            set screenHeight to item 2 of screenSize
+                        end tell
+                        set leftPos to (screenWidth - {window_width}) / 2
+                        set topPos to (screenHeight - {window_height}) / 2
+                        set rightPos to leftPos + {window_width}
+                        set bottomPos to topPos + {window_height}
+                        set bounds of newWindow to {{leftPos, topPos, rightPos, bottomPos}}
+                    end tell
+                    '''
+                    result = subprocess.run(
+                        ["osascript", "-e", script],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode != 0 or result.stderr:
+                        # If AppleScript failed, fall back to regular browser open
+                        webbrowser.open(url)
+                else:
+                    # For non-Chrome/Safari browsers, use regular webbrowser.open()
+                    webbrowser.open(url)
+            except Exception as e:
+                # If anything fails, fall back to regular browser open
+                print(f"Warning: Could not open browser in popup mode: {e}")
+                try:
+                    webbrowser.open(url)
+                except Exception as e2:
+                    print(f"Warning: Could not open browser: {e2}")
+                    # Server will still run, user can manually open browser
+        else:
+            # Server already running, just reset events for next command
+            self.shutdown_event.clear()
+            self.command_ready_event.clear()
         
-        # Wait for shutdown event (when user submits/cancels)
-        self.shutdown_event.wait(timeout=300)  # 5 minute timeout
+        # Wait for commands - handle both list commands (stay open) and regular commands (close)
+        while True:
+            # Wait for either shutdown (cancel/non-list command) or command ready (list command)
+            # Use a short timeout to periodically check both events
+            if self.shutdown_event.wait(timeout=0.1):
+                # Shutdown event set - user cancelled or submitted non-list command
+                break
+            
+            if self.command_ready_event.is_set():
+                # Command ready - it's a list command, return it and keep dialog open
+                command = self.result
+                self.result = None  # Clear for next command
+                self.command_ready_event.clear()  # Reset for next submission
+                return command
+        
+        # Clear active dialog
+        set_active_dialog(None)
         
         # Give a moment for cleanup
         time.sleep(0.2)
         
         return self.result
+    
+    def send_results(self, title: str, items: List[str]):
+        """
+        Send results to display in the dialog.
+        
+        Args:
+            title: Title for the results
+            items: List of result items to display
+        """
+        with self.results_lock:
+            self.results = {
+                'title': title,
+                'items': items
+            }
 
