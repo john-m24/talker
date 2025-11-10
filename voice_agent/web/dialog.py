@@ -182,6 +182,11 @@ HTML_TEMPLATE = """
     <div class="container">
         <h2>Voice Agent - Text Command</h2>
         <div id="results"></div>
+        <div id="clarification" style="display: none; margin-bottom: 15px; padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+            <div style="font-weight: 600; color: #856404; margin-bottom: 8px;">⚠️ Did I hear that correctly?</div>
+            <div id="clarification-reason" style="color: #856404; margin-bottom: 10px; font-size: 14px;"></div>
+            <div style="color: #856404; margin-bottom: 10px; font-size: 14px;">Transcribed text:</div>
+        </div>
         <div class="input-wrapper">
             <input type="text" id="command-input" placeholder="Enter your command..." autofocus>
             <div id="ghost-text"></div>
@@ -215,6 +220,9 @@ HTML_TEMPLATE = """
                 // Just focus the input field
                 document.getElementById('command-input').focus();
             }
+            
+            // Start polling for clarification requests
+            pollForClarification();
         };
 
         let suggestions = [];
@@ -451,12 +459,90 @@ HTML_TEMPLATE = """
         }
 
         function cancel() {
-            fetch('/cancel', {method: 'POST'})
+            // Check if we're in clarification mode
+            const clarificationDiv = document.getElementById('clarification');
+            if (clarificationDiv && clarificationDiv.style.display !== 'none') {
+                // Submit cancellation for clarification
+                fetch('/submit-clarification', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({cancelled: true})
+                })
+                .then(() => {
+                    window.close();
+                })
+                .catch(err => {
+                    console.error('Error cancelling clarification:', err);
+                    window.close();
+                });
+            } else {
+                // Regular cancel
+                fetch('/cancel', {method: 'POST'})
+                .then(() => {
+                    window.close();
+                })
+                .catch(err => {
+                    console.error('Error cancelling:', err);
+                    window.close();
+                });
+            }
+        }
+        
+        function pollForClarification() {
+            fetch('/get-clarification')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.clarification && !data.consumed) {
+                        // Show clarification UI
+                        const clarificationDiv = document.getElementById('clarification');
+                        const reasonDiv = document.getElementById('clarification-reason');
+                        const input = document.getElementById('command-input');
+                        
+                        if (clarificationDiv && reasonDiv && input) {
+                            clarificationDiv.style.display = 'block';
+                            if (data.clarification.reason) {
+                                reasonDiv.textContent = 'Reason: ' + data.clarification.reason;
+                            } else {
+                                reasonDiv.textContent = '';
+                            }
+                            input.value = data.clarification.text;
+                            input.focus();
+                            input.select();
+                            
+                            // Update OK button to submit clarification
+                            const okButton = document.getElementById('ok-button');
+                            if (okButton) {
+                                okButton.onclick = function() {
+                                    submitClarification();
+                                };
+                            }
+                        }
+                    } else {
+                        // Poll again after a delay
+                        setTimeout(pollForClarification, 500);
+                    }
+                })
+                .catch(err => {
+                    console.error('Error polling for clarification:', err);
+                    // Poll again after a delay
+                    setTimeout(pollForClarification, 500);
+                });
+        }
+        
+        function submitClarification() {
+            const input = document.getElementById('command-input');
+            const text = input ? input.value : '';
+            
+            fetch('/submit-clarification', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: text, cancelled: false})
+            })
             .then(() => {
                 window.close();
             })
             .catch(err => {
-                console.error('Error cancelling:', err);
+                console.error('Error submitting clarification:', err);
                 window.close();
             });
         }
@@ -528,6 +614,9 @@ class WebTextInputDialog:
         self.command_ready_event = threading.Event()  # Signal when a command is ready
         self.results = None
         self.results_lock = threading.Lock()
+        self.clarification_text = None
+        self.clarification_reason = None
+        self.clarification_event = threading.Event()  # Signal when clarification is ready
         self._setup_routes()
     
     def _setup_routes(self):
@@ -606,6 +695,33 @@ class WebTextInputDialog:
                     'title': data.get('title', 'Results'),
                     'items': data.get('items', [])
                 }
+            return jsonify({'status': 'ok'})
+        
+        @self.app.route('/get-clarification', methods=['GET'])
+        def get_clarification():
+            """Get clarification request if available."""
+            if self.clarification_text is not None:
+                clarification = {
+                    'text': self.clarification_text,
+                    'reason': self.clarification_reason
+                }
+                return jsonify({'clarification': clarification, 'consumed': False})
+            return jsonify({'clarification': None, 'consumed': True})
+        
+        @self.app.route('/submit-clarification', methods=['POST'])
+        def submit_clarification():
+            """Submit clarification response."""
+            data = request.json
+            confirmed_text = data.get('text', '')
+            cancelled = data.get('cancelled', False)
+            
+            if cancelled:
+                self.result = None
+            else:
+                self.result = confirmed_text
+            
+            # Signal that clarification is ready
+            self.clarification_event.set()
             return jsonify({'status': 'ok'})
         
         @self.app.route('/cancel', methods=['POST'])
@@ -750,4 +866,115 @@ class WebTextInputDialog:
                 'title': title,
                 'items': items
             }
+    
+    def request_clarification(self, text: str, reason: Optional[str] = None) -> Optional[str]:
+        """
+        Request clarification from the user via the web dialog.
+        
+        Args:
+            text: The text that needs clarification
+            reason: Optional reason why clarification is needed
+            
+        Returns:
+            The confirmed/corrected text if user confirms, or None if cancelled
+        """
+        # Set clarification request
+        self.clarification_text = text
+        self.clarification_reason = reason
+        self.clarification_event.clear()
+        self.result = None
+        
+        # Make sure the dialog is open
+        if not (self.server_thread and self.server_thread.is_alive()):
+            # Dialog not open yet, open it
+            # Set as active dialog
+            set_active_dialog(self)
+            
+            # Find available port
+            self.port = _find_available_port(self.port)
+            
+            # Reset events
+            self.shutdown_event.clear()
+            self.command_ready_event.clear()
+            self.clarification_event.clear()
+            
+            # Start server in background thread
+            self.server_thread = threading.Thread(
+                target=lambda: self.app.run(port=self.port, debug=False, use_reloader=False, host='127.0.0.1')
+            )
+            self.server_thread.daemon = True
+            self.server_thread.start()
+            
+            # Wait a moment for server to start
+            time.sleep(0.5)
+            
+            # Open browser in popup window (macOS) - centered on screen
+            url = f'http://127.0.0.1:{self.port}'
+            
+            # Window dimensions (keep original small size)
+            window_width = 600
+            window_height = 500
+            
+            # Detect default browser and open in popup window (only one browser)
+            try:
+                default_browser = webbrowser.get()
+                browser_name = default_browser.name.lower()
+                
+                # Determine which browser to use
+                if 'chrome' in browser_name:
+                    browser_app = "Google Chrome"
+                elif 'safari' in browser_name:
+                    browser_app = "Safari"
+                else:
+                    # For other browsers, just use regular webbrowser.open()
+                    browser_app = None
+                
+                if browser_app:
+                    # Use AppleScript to open in popup window (centered)
+                    script = f'''
+                    tell application "{browser_app}"
+                        activate
+                        set newWindow to make new window
+                        set URL of active tab of newWindow to "{url}"
+                        -- Get screen dimensions and center the window
+                        tell application "System Events"
+                            set screenSize to size of desktop
+                            set screenWidth to item 1 of screenSize
+                            set screenHeight to item 2 of screenSize
+                            set windowLeft to (screenWidth - {window_width}) / 2
+                            set windowTop to (screenHeight - {window_height}) / 2
+                            tell process "{browser_app}"
+                                set position of window 1 to {{windowLeft, windowTop}}
+                                set size of window 1 to {{{window_width}, {window_height}}}
+                            end tell
+                        end tell
+                    end tell
+                    '''
+                    
+                    try:
+                        subprocess.run(
+                            ["osascript", "-e", script],
+                            capture_output=True,
+                            timeout=5
+                        )
+                    except Exception as e:
+                        print(f"Warning: Could not open browser popup: {e}")
+                        # Fallback to default browser
+                        webbrowser.open(url)
+                else:
+                    # For other browsers, just use regular webbrowser.open()
+                    webbrowser.open(url)
+            except Exception as e:
+                print(f"Warning: Could not detect browser: {e}")
+                # Fallback to default browser
+                webbrowser.open(url)
+        
+        # Wait for clarification response
+        self.clarification_event.wait(timeout=300)  # 5 minute timeout
+        
+        # Clear clarification request
+        self.clarification_text = None
+        self.clarification_reason = None
+        
+        return self.result
 

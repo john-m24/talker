@@ -45,6 +45,14 @@ class PlaceAppCommand(Command):
                     return False
             
             if file_path:
+                # If no app specified, AI should have inferred it, but we have a fallback
+                if not app_name:
+                    from ..file_control import infer_app_for_file
+                    app_name = infer_app_for_file(file_path)
+                    if not app_name:
+                        print(f"Error: Could not determine app for file '{file_path}'. Please specify an app.\n")
+                        return False
+                
                 # Open file in app first
                 print(f"Opening '{file_path}' in '{app_name}'...")
                 success = open_path_in_app(file_path, app_name)
@@ -63,11 +71,14 @@ class PlaceAppCommand(Command):
             
             # Resolve project path if only project_name is provided
             if project_name and not project_path:
+                print(f"🔍 [DEBUG] place_app: Resolving project name '{project_name}'")
                 file_tracker = FileContextTracker(cache_manager=get_cache_manager())
                 resolved_path = file_tracker.find_project(project_name)
                 if resolved_path:
+                    print(f"🔍 [DEBUG] place_app: Resolved '{project_name}' -> {resolved_path}")
                     project_path = resolved_path
                 else:
+                    print(f"🔍 [DEBUG] place_app: Failed to resolve project name '{project_name}'")
                     print(f"Error: Could not find project '{project_name}'\n")
                     return False
             

@@ -146,9 +146,18 @@ class AIAgent:
             top_files = (code_files[:10] + other_files[:5])[:10]
             
             if top_files:
-                file_names = [f.get('name', '') for f in top_files]
+                file_info = []
+                for f in top_files:
+                    file_name = f.get('name', '')
+                    file_type = f.get('type', 'other')
+                    app = f.get('app', '')
+                    if app:
+                        file_info.append(f"{file_name} ({file_type}, default app: {app})")
+                    else:
+                        file_info.append(f"{file_name} ({file_type})")
+                
                 context_parts.append(
-                    f"Recently opened files (top 10, prioritizing code files): {', '.join(file_names)}"
+                    f"Recently opened files (top 10, prioritizing code files): {', '.join(file_info)}"
                 )
         
         if current_project:
@@ -159,9 +168,17 @@ class AIAgent:
             )
         
         if active_projects:
-            project_names = [p.get('name', '') for p in active_projects[:5]]
+            # Include all active projects, not just top 5
+            project_info = []
+            for p in active_projects:
+                name = p.get('name', '')
+                path = p.get('path', '')
+                if path:
+                    project_info.append(f"{name} ({path})")
+                else:
+                    project_info.append(name)
             context_parts.append(
-                f"Active projects: {', '.join(project_names)}"
+                f"All active projects ({len(active_projects)} total): {', '.join(project_info)}"
             )
         
         # Add available presets context if presets are configured
@@ -215,10 +232,9 @@ class AIAgent:
                 )
         
         if installed_apps:
-            # Limit to first 50 apps to avoid token limits
-            apps_preview = installed_apps[:50]
+            # Include all installed apps - no limit
             context_parts.append(
-                f"Some installed applications (for reference): {', '.join(apps_preview)}"
+                f"All installed applications: {', '.join(installed_apps)}"
             )
         
         context_parts.extend([
@@ -240,11 +256,11 @@ class AIAgent:
             "",
             "Each intent object in the 'commands' array should have:",
             "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', 'list_tabs', 'close_app', 'close_tab', 'activate_preset', 'list_recent_files', or 'list_projects'",
-            "- 'app_name': (for focus_app, place_app, and close_app, string, required) the exact application name - prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running) (non-empty string)",
+            "- 'app_name': (for focus_app, place_app, and close_app, string, required for close_app, optional for focus_app/place_app when file/project is specified) the exact application name - MUST be from the installed apps list. Verify the app exists in installed apps before using it. If the user mentions something that's not an app (like a file name), do NOT use it as app_name. If the user specifies an app, use it. If the user opens a file/project without specifying an app, intelligently infer the best app from ALL installed apps based on file type, file extension, and context. Prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running) (non-empty string if provided)",
             "- 'file_path': (for focus_app and place_app, string, optional) exact file path to open in the app",
             "- 'file_name': (for focus_app and place_app, string, optional) file name for fuzzy matching (use this if user says 'open x file in app' or 'open x file in app on monitor')",
             "- 'project_path': (for focus_app and place_app, string, optional) exact project/folder path to open in the app",
-            "- 'project_name': (for focus_app and place_app, string, optional) project/folder name for fuzzy matching (use this if user says 'open x project in app' or 'open x folder in app on monitor')",
+            "- 'project_name': (for focus_app and place_app, string, optional) project/folder name - MUST match the EXACT project name from the active projects list. When the user mentions a project name (e.g., 'anythingllm', 'anything llm', 'anything-llm'), find the matching project in the active projects list and use its EXACT name. For example, if the user says 'anythingllm' or 'anything llm', and the active projects list contains 'anything-llm', use 'anything-llm' as the project_name. Match user input to the exact project name from the list, accounting for variations in spacing, hyphens, and case.",
             "- 'monitor': (for place_app, enum, required) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
             "- 'maximize': (for place_app, boolean, optional) true if user wants to maximize the window, false otherwise (default: false)",
             "- 'tab_index': (for switch_tab, integer, required) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab (positive integer, 1-based)",
@@ -266,11 +282,30 @@ class AIAgent:
             "",
             "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
             "If no matching app is found in running apps, use the closest match from installed apps.",
+            "CRITICAL: Before using an app_name, verify it exists in the installed apps list. If the app name is not in the installed apps list, it is likely incorrect.",
+            "If the user says 'open [file]' or 'open [file] on [monitor]' without specifying an app, you MUST intelligently infer the best app from ALL installed apps based on:",
+            "1. File extension and type (e.g., .mov/.mp4 -> video player, .py/.js -> code editor, .jpg/.png -> image viewer)",
+            "2. File's default app (if available in recent_files context)",
+            "3. Common apps for that file type from the installed apps list",
+            "4. User's likely intent (e.g., code files -> code editor, videos -> video player)",
+            "Look through ALL installed apps and pick the most appropriate one. For example:",
+            "- Video files (.mov, .mp4, .avi, .mkv) -> find any video player in installed apps (QuickTime Player, VLC, IINA, etc.)",
+            "- Image files (.jpg, .png, .gif, .webp) -> find any image viewer in installed apps (Preview, Photos, etc.)",
+            "- Code files (.py, .js, .ts, .jsx, .tsx) -> find any code editor in installed apps (Cursor, VS Code, PyCharm, etc.)",
+            "- PDF files -> find any PDF viewer in installed apps (Preview, Adobe Acrobat Reader, etc.)",
+            "- Text files (.txt, .md) -> find any text editor in installed apps (TextEdit, Cursor, VS Code, etc.)",
+            "If you cannot determine the app from the file type and installed apps, set needs_clarification to true and ask which app to use.",
             "IMPORTANT: focus_app and place_app commands can open apps even if they're not currently running - the system will launch them automatically.",
             "When the user says 'open [App]' or 'launch [App]', use type 'focus_app' - it will launch the app if needed.",
             "If the user wants to place an app on a monitor, use type 'place_app' and extract the monitor name.",
             "If the user says 'open X file in Y app on [monitor]', use type 'place_app' with app_name: Y, file_name: X, and monitor: [monitor].",
             "If the user says 'open X project in Y app on [monitor]' or 'open X folder in Y on [monitor]', use type 'place_app' with app_name: Y, project_name: X, and monitor: [monitor].",
+            "If the user says 'open [file] on [monitor]' without specifying an app, use type 'place_app' with file_name: [file], app_name: [inferred from file type], and monitor: [monitor].",
+            "CRITICAL: When the user mentions a project name, you MUST match it to the EXACT project name from the active projects list. For example:",
+            "- User says 'anythingllm' or 'anything llm' -> match to 'anything-llm' from the list",
+            "- User says 'talk to computer' -> match to 'talk-to-computer' from the list",
+            "- User says 'private gpt' -> match to 'private-gpt' from the list",
+            "Look through the active projects list and find the project that matches the user's input, accounting for variations in spacing, hyphens, underscores, and case. Use the EXACT name from the list, not the user's input.",
             "If the user wants to switch tabs, you MUST analyze ALL open tabs and select the best match.",
             "CRITICAL: You have access to RAW Chrome tabs data from AppleScript. Parse this raw data to find ALL tabs.",
             "The raw data format is: globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, nextGlobalIndex, \"nextTitle\", ...",

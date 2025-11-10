@@ -142,6 +142,12 @@ def activate_app(app_name: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    # Check if app is installed first
+    installed_apps = list_installed_apps()
+    if app_name not in installed_apps:
+        print(f"Error: Application '{app_name}' is not installed")
+        return False
+    
     try:
         # First, try to activate (this will launch the app if it's not running)
         script = f'tell application "{app_name}" to activate'

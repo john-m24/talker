@@ -15,14 +15,6 @@ class FocusAppCommand(Command):
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the focus app command."""
         app_name = intent.get("app_name")
-        if not app_name:
-            print("Error: No app name specified in intent\n")
-            return False
-        
-        # Check if app is running to provide better feedback
-        from ..window_control import list_running_apps
-        running_apps = list_running_apps()
-        is_running = app_name in running_apps
         
         # Handle file opening if specified
         file_path = intent.get("file_path")
@@ -37,6 +29,7 @@ class FocusAppCommand(Command):
             from ..file_control import open_path_in_app
             from ..file_context import FileContextTracker
             from ..cache import get_cache_manager
+            from ..window_control import list_running_apps
             
             # Resolve file path if only file_name is provided
             if file_name and not file_path:
@@ -50,6 +43,18 @@ class FocusAppCommand(Command):
                     return False
             
             if file_path:
+                # If no app specified, AI should have inferred it, but we have a fallback
+                if not app_name:
+                    from ..file_control import infer_app_for_file
+                    app_name = infer_app_for_file(file_path)
+                    if not app_name:
+                        print(f"Error: Could not determine app for file '{file_path}'. Please specify an app.\n")
+                        return False
+                
+                # Check if app is running to provide better feedback
+                running_apps = list_running_apps()
+                is_running = app_name in running_apps
+                
                 if is_running:
                     print(f"Opening '{file_path}' in '{app_name}'...")
                 else:
@@ -62,6 +67,16 @@ class FocusAppCommand(Command):
                     print(f"✗ Failed to open '{file_path}' in '{app_name}'\n")
                 return success
         
+        # If we get here, we need an app_name (no file/project to open)
+        if not app_name:
+            print("Error: No app name specified in intent\n")
+            return False
+        
+        # Check if app is running to provide better feedback
+        from ..window_control import list_running_apps
+        running_apps = list_running_apps()
+        is_running = app_name in running_apps
+        
         if project_path or project_name:
             # Need to open a project/folder in the app
             from ..file_control import open_path_in_app
@@ -71,11 +86,14 @@ class FocusAppCommand(Command):
             
             # Resolve project path if only project_name is provided
             if project_name and not project_path:
+                print(f"🔍 [DEBUG] focus_app: Resolving project name '{project_name}'")
                 file_tracker = FileContextTracker(cache_manager=get_cache_manager())
                 resolved_path = file_tracker.find_project(project_name)
                 if resolved_path:
+                    print(f"🔍 [DEBUG] focus_app: Resolved '{project_name}' -> {resolved_path}")
                     project_path = resolved_path
                 else:
+                    print(f"🔍 [DEBUG] focus_app: Failed to resolve project name '{project_name}'")
                     print(f"Error: Could not find project '{project_name}'\n")
                     return False
             
