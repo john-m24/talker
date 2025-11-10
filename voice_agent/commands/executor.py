@@ -82,6 +82,15 @@ class CommandExecutor:
                     success = command.execute(enhanced_intent)
                     if not success:
                         all_succeeded = False
+                    
+                    # If command doesn't produce results, signal "done" immediately
+                    if not command.produces_results():
+                        try:
+                            from ..api_server import send_results
+                            send_results("", [])  # Empty result signals "done, close client"
+                        except Exception:
+                            pass
+                    
                     command_found = True
                     break
             

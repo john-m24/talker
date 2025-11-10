@@ -11,6 +11,10 @@ class ListTabsCommand(Command):
         """Check if this command can handle the intent type."""
         return intent_type == "list_tabs"
     
+    def produces_results(self) -> bool:
+        """This command produces results to display."""
+        return True
+    
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list tabs command."""
         # Force fresh data by invalidating cache before getting chrome_tabs

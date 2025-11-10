@@ -32,4 +32,16 @@ class Command(ABC):
             True if this command can handle the intent type
         """
         pass
+    
+    def produces_results(self) -> bool:
+        """
+        Return True if this command produces displayable results.
+        
+        Query commands (list_*) return True.
+        Action commands (focus, place, close, etc.) return False (default).
+        
+        Returns:
+            True if this command produces results to display, False otherwise
+        """
+        return False  # Default: action commands don't produce results
 

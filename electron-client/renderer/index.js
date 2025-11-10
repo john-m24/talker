@@ -101,6 +101,15 @@
 				if (!res.ok) return
 				const data = await res.json()
 				if (data.results) {
+					// Check if it's an empty result (signals "done, close")
+					if (data.results.title === "" && (!data.results.items || data.results.items.length === 0)) {
+						// Empty result - command done, close immediately
+						stopResultsPolling()
+						if (window.palette && window.palette.hide) {
+							window.palette.hide()
+						}
+						return
+					}
 					// Results received - display and keep open
 					displayResults(data.results)
 					stopResultsPolling()

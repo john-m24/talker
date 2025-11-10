@@ -11,6 +11,10 @@ class ListRecentFilesCommand(Command):
         """Check if this command can handle the intent type."""
         return intent_type == "list_recent_files"
     
+    def produces_results(self) -> bool:
+        """This command produces results to display."""
+        return True
+    
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list recent files command."""
         recent_files = intent.get("recent_files", [])
