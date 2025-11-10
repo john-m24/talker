@@ -4,22 +4,24 @@ import subprocess
 from typing import Optional
 from .utils import escape_applescript_string
 from .config import AUTOCOMPLETE_ENABLED
+from .cache import get_cache_manager
 
 
 def show_text_input_dialog(
-    autocomplete_engine=None,
-    cache_manager=None
+    autocomplete_engine=None
 ) -> Optional[str]:
     """
     Show text input dialog with auto-complete support.
     
     Args:
         autocomplete_engine: AutocompleteEngine instance (optional)
-        cache_manager: CacheManager instance (optional)
     
     Returns:
         The entered text if user submits, or None if cancelled
     """
+    # Get cache manager from global instance
+    cache_manager = get_cache_manager()
+    
     # Try web-based dialog with auto-complete if enabled and both engine and cache are provided
     if AUTOCOMPLETE_ENABLED and autocomplete_engine and cache_manager:
         try:

@@ -2,20 +2,9 @@
 
 import os
 from typing import List, Optional
-from .config import MONITORS, CACHE_ENABLED, CACHE_APPS_TTL
+from .config import MONITORS, CACHE_APPS_TTL
 from .utils import AppleScriptExecutor, escape_applescript_string
-
-# Module-level cache manager (initialized on first use)
-_cache_manager = None
-
-
-def _get_cache_manager():
-    """Get or create cache manager instance."""
-    global _cache_manager
-    if _cache_manager is None and CACHE_ENABLED:
-        from .cache import CacheManager
-        _cache_manager = CacheManager(enabled=CACHE_ENABLED)
-    return _cache_manager
+from .cache import get_cache_manager, CacheKeys
 
 
 def list_running_apps() -> List[str]:
@@ -27,9 +16,9 @@ def list_running_apps() -> List[str]:
         List of application names (strings)
     """
     # Check cache first
-    cache_manager = _get_cache_manager()
+    cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get("running_apps")
+        cached = cache_manager.get(CacheKeys.RUNNING_APPS)
         if cached is not None:
             return cached
     
@@ -47,7 +36,7 @@ def list_running_apps() -> List[str]:
         
         # Cache the result
         if cache_manager:
-            cache_manager.set("running_apps", apps, ttl=CACHE_APPS_TTL)
+            cache_manager.set(CacheKeys.RUNNING_APPS, apps, ttl=CACHE_APPS_TTL)
         
         return apps
     except Exception as e:
@@ -64,9 +53,9 @@ def list_installed_apps() -> List[str]:
         List of application names (without .app extension)
     """
     # Check cache first
-    cache_manager = _get_cache_manager()
+    cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get("installed_apps")
+        cached = cache_manager.get(CacheKeys.INSTALLED_APPS)
         if cached is not None:
             return cached
     
@@ -88,7 +77,7 @@ def list_installed_apps() -> List[str]:
         
         # Cache the result (longer TTL for installed apps)
         if cache_manager:
-            cache_manager.set("installed_apps", apps, ttl=CACHE_APPS_TTL * 3)  # 3x TTL for installed apps
+            cache_manager.set(CacheKeys.INSTALLED_APPS, apps, ttl=CACHE_APPS_TTL * 3)  # 3x TTL for installed apps
         
         return apps
     except Exception as e:

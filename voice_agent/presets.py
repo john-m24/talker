@@ -4,19 +4,8 @@ import os
 import json
 from typing import Dict, List, Optional, Any
 from pathlib import Path
-from .config import CACHE_ENABLED, CACHE_PRESETS_TTL
-
-# Module-level cache manager (initialized on first use)
-_cache_manager = None
-
-
-def _get_cache_manager():
-    """Get or create cache manager instance."""
-    global _cache_manager
-    if _cache_manager is None and CACHE_ENABLED:
-        from .cache import CacheManager
-        _cache_manager = CacheManager(enabled=CACHE_ENABLED)
-    return _cache_manager
+from .config import CACHE_PRESETS_TTL
+from .cache import get_cache_manager, CacheKeys
 
 
 def _get_presets_file_path() -> str:
@@ -58,9 +47,9 @@ def load_presets() -> Dict[str, Any]:
         Returns empty dict if file doesn't exist or is invalid.
     """
     # Check cache first
-    cache_manager = _get_cache_manager()
+    cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get("presets")
+        cached = cache_manager.get(CacheKeys.PRESETS)
         if cached is not None:
             return cached
     
@@ -85,7 +74,7 @@ def load_presets() -> Dict[str, Any]:
         
         # Cache the result
         if cache_manager:
-            cache_manager.set("presets", valid_presets, ttl=CACHE_PRESETS_TTL)
+            cache_manager.set(CacheKeys.PRESETS, valid_presets, ttl=CACHE_PRESETS_TTL)
         
         return valid_presets
     except json.JSONDecodeError as e:

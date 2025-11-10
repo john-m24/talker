@@ -16,6 +16,7 @@ from .config import (
     CACHE_ENABLED, CACHE_HISTORY_SIZE, CACHE_HISTORY_PATH,
     AUTOCOMPLETE_ENABLED, AUTOCOMPLETE_MAX_SUGGESTIONS, LLM_CACHE_ENABLED
 )
+from .cache import initialize_cache_manager, get_cache_manager
 from .hotkey import HotkeyListener
 from .presets import load_presets, list_presets
 
@@ -134,8 +135,7 @@ def process_command(
     chrome_tabs: Optional[list],
     chrome_tabs_raw: Optional[str],
     available_presets: Optional[list],
-    command_executor: CommandExecutor,
-    cache_manager=None
+    command_executor: CommandExecutor
 ) -> bool:
     """
     Process a command from text input (voice or text mode).
@@ -186,6 +186,7 @@ def process_command(
     command_executor.execute(intent_result, running_apps=running_apps, chrome_tabs=chrome_tabs)
     
     # Track command in history (if cache is enabled)
+    cache_manager = get_cache_manager()
     if cache_manager:
         try:
             cache_manager.add_to_history(text)
@@ -217,11 +218,9 @@ def main():
             print("   Model will be loaded on first use.\n")
     
     # Initialize cache manager first (needed for AI agent if LLM cache is enabled)
-    cache_manager = None
     if CACHE_ENABLED:
         try:
-            from .cache import CacheManager
-            cache_manager = CacheManager(
+            initialize_cache_manager(
                 enabled=CACHE_ENABLED,
                 history_size=CACHE_HISTORY_SIZE,
                 history_path=CACHE_HISTORY_PATH
@@ -232,7 +231,7 @@ def main():
     
     # Initialize AI agent
     try:
-        agent = AIAgent(cache_manager=cache_manager if LLM_CACHE_ENABLED else None)
+        agent = AIAgent(cache_manager=get_cache_manager() if LLM_CACHE_ENABLED else None)
         print("AI agent initialized successfully.\n")
     except Exception as e:
         print(f"Error initializing AI agent: {e}")
@@ -335,7 +334,7 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor, cache_manager
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
                 )
                 
                 if not should_continue:
@@ -354,8 +353,7 @@ def main():
                 print("✅ Text hotkey pressed! Opening text input dialog...\n")
                 
                 text = show_text_input_dialog(
-                    autocomplete_engine=autocomplete_engine,
-                    cache_manager=cache_manager
+                    autocomplete_engine=autocomplete_engine
                 )
                 
                 if not text:
@@ -365,7 +363,7 @@ def main():
                 
                 # Process the command
                 should_continue = process_command(
-                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor, cache_manager
+                    text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor
                 )
                 
                 if not should_continue:

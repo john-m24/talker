@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Union
 from .config import LLM_ENDPOINT, LLM_MODEL, LLM_CACHE_ENABLED
 from .hardcoded_commands import get_hardcoded_command
 from .pattern_matcher import PatternMatcher
+from .cache import CacheKeys, get_cache_manager
 
 
 class AIAgent:
@@ -23,7 +24,8 @@ class AIAgent:
         """
         self.endpoint = endpoint or LLM_ENDPOINT
         self.model = model or LLM_MODEL
-        self.cache_manager = cache_manager
+        # Fall back to global cache manager if not provided (for testing/mocking support)
+        self.cache_manager = cache_manager if cache_manager is not None else get_cache_manager()
         self.pattern_matcher = PatternMatcher()
         
         # Initialize OpenAI client with custom endpoint
@@ -80,7 +82,8 @@ class AIAgent:
         # Generate text-only cache key (normalized text hash)
         cache_key = None
         if LLM_CACHE_ENABLED and self.cache_manager:
-            cache_key = f"llm_response:{hashlib.md5(normalized_text.encode()).hexdigest()}"
+            text_hash = hashlib.md5(normalized_text.encode()).hexdigest()
+            cache_key = CacheKeys.llm_response(text_hash)
             
             # Check text-only cache first
             cached_result = self.cache_manager.get(cache_key)

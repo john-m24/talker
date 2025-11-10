@@ -6,6 +6,81 @@ import time
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 
+# Module-level singleton instance
+_instance: Optional['CacheManager'] = None
+
+
+class CacheKeys:
+    """Constants for cache keys to avoid typos and ensure consistency."""
+    RUNNING_APPS = "running_apps"
+    INSTALLED_APPS = "installed_apps"
+    CHROME_TABS = "chrome_tabs"
+    CHROME_TABS_RAW = "chrome_tabs_raw"
+    PRESETS = "presets"
+    LLM_RESPONSE = "llm_response:"
+    
+    @staticmethod
+    def llm_response(text_hash: str) -> str:
+        """Generate LLM response cache key from text hash."""
+        return f"{CacheKeys.LLM_RESPONSE}{text_hash}"
+
+
+def get_cache_manager() -> Optional['CacheManager']:
+    """
+    Get the global cache manager instance.
+    
+    Returns:
+        CacheManager instance if initialized, None otherwise
+    """
+    return _instance
+
+
+def initialize_cache_manager(
+    enabled: bool = True,
+    history_size: int = 100,
+    history_path: Optional[str] = None
+) -> Optional['CacheManager']:
+    """
+    Initialize the global cache manager instance.
+    
+    This function is idempotent - if called multiple times, it returns
+    the existing instance without re-initializing.
+    
+    Args:
+        enabled: Whether caching is enabled
+        history_size: Maximum number of commands to store in history
+        history_path: Path to history JSON file (defaults to ~/.voice_agent_history.json)
+        
+    Returns:
+        CacheManager instance if enabled, None otherwise
+    """
+    global _instance
+    
+    # Idempotent: return existing instance if already initialized
+    if _instance is not None:
+        return _instance
+    
+    # Create new instance if enabled
+    if enabled:
+        _instance = CacheManager(
+            enabled=enabled,
+            history_size=history_size,
+            history_path=history_path
+        )
+    
+    return _instance
+
+
+def reset_cache_manager() -> None:
+    """
+    Reset the global cache manager instance (for testing).
+    
+    This sets the global instance to None, allowing a fresh instance
+    to be created on the next call to initialize_cache_manager().
+    """
+    global _instance
+    _instance = None
+
 
 class CacheManager:
     """Manages caching of system data and command history."""
@@ -165,4 +240,13 @@ class CacheManager:
                 json.dump(self._history, f, indent=2)
         except IOError as e:
             print(f"Warning: Failed to save command history to {self.history_path}: {e}")
+
+
+__all__ = [
+    'CacheManager',
+    'CacheKeys',
+    'get_cache_manager',
+    'initialize_cache_manager',
+    'reset_cache_manager',
+]
 
