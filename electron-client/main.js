@@ -10,9 +10,12 @@ function createWindow() {
 	win = new BrowserWindow({
 		width: 700,
 		height: 200,
+		minWidth: 500,
+		minHeight: 150,
+		maxHeight: 800,
 		frame: false,
 		show: false,
-		resizable: false,
+		resizable: true,
 		movable: true,
 		alwaysOnTop: true,
 		skipTaskbar: true,
@@ -23,6 +26,31 @@ function createWindow() {
 	})
 
 	win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
+	
+	// Auto-resize window based on content
+	win.webContents.on('did-finish-load', () => {
+		resizeWindow()
+	})
+}
+
+function resizeWindow() {
+	if (!win) return
+	win.webContents.executeJavaScript(`
+		(function() {
+			const container = document.querySelector('.container')
+			if (!container) return { width: 700, height: 200 }
+			const rect = container.getBoundingClientRect()
+			const padding = 24 // 12px top + 12px bottom
+			const height = Math.min(rect.height + padding, 800)
+			return { width: 700, height: Math.max(height, 150) }
+		})()
+	`).then((size) => {
+		if (size && size.width && size.height) {
+			win.setSize(size.width, size.height, false)
+		}
+	}).catch(() => {
+		// Ignore errors
+	})
 }
 
 function showPalette() {
@@ -88,6 +116,12 @@ app.on('will-quit', () => {
 ipcMain.on('palette:hide', () => {
 	if (win) {
 		win.hide()
+	}
+})
+
+ipcMain.on('palette:resize', () => {
+	if (win) {
+		resizeWindow()
 	}
 })
 

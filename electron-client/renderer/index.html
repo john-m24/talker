@@ -39,14 +39,14 @@
       }
       .results {
         margin-top: 8px;
-        max-height: 300px;
+        max-height: 400px;
         overflow-y: auto;
         overflow-x: hidden;
         border-radius: 8px;
         border: 1px solid #333;
         background: #161616;
         box-sizing: border-box;
-        padding: 8px 10px;
+        padding: 12px;
         display: none;
       }
       .results.show {
@@ -54,15 +54,22 @@
       }
       .results-title {
         font-weight: 600;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #333;
         color: #eaeaea;
+        font-size: 14px;
       }
       .results-item {
-        padding: 4px 0;
+        padding: 6px 0;
         color: #d0d0d0;
         word-wrap: break-word;
         overflow-wrap: break-word;
         white-space: normal;
+        line-height: 1.4;
+      }
+      .results-item:hover {
+        color: #eaeaea;
       }
       .results-error {
         color: #ff6b6b;
@@ -103,9 +110,9 @@
   </head>
   <body>
     <div class="container">
-      <div id="results" class="results"></div>
       <input id="q" class="input" type="text" placeholder="Type a command..." autocomplete="off" />
       <div id="list" class="list" hidden></div>
+      <div id="results" class="results"></div>
       <div class="actions">
         <button id="submitBtn" class="btn">Submit</button>
         <button id="closeBtn" class="btn">Close</button>

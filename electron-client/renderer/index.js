@@ -53,12 +53,31 @@
 		if (!data) {
 			results.classList.remove('show')
 			results.innerHTML = ''
+			// Show suggestions list again when results are cleared
+			if (suggestions.length > 0) {
+				list.hidden = false
+			}
+			// Notify main process to resize window after DOM update
+			setTimeout(() => {
+				if (window.palette && window.palette.resize) {
+					window.palette.resize()
+				}
+			}, 10)
 			return
 		}
+
+		// Hide suggestions list when results are shown
+		list.hidden = true
 
 		if (data.error) {
 			results.innerHTML = `<div class="results-error">${escapeHtml(data.error)}</div>`
 			results.classList.add('show')
+			// Notify main process to resize window after DOM update
+			setTimeout(() => {
+				if (window.palette && window.palette.resize) {
+					window.palette.resize()
+				}
+			}, 10)
 			return
 		}
 
@@ -69,6 +88,12 @@
 			})
 			results.innerHTML = html
 			results.classList.add('show')
+			// Notify main process to resize window after DOM update
+			setTimeout(() => {
+				if (window.palette && window.palette.resize) {
+					window.palette.resize()
+				}
+			}, 10)
 		}
 	}
 
@@ -160,6 +185,10 @@
 	q.addEventListener('input', () => {
 		activeIndex = -1
 		const text = q.value
+		// Hide results when user starts typing
+		if (results.classList.contains('show')) {
+			displayResults(null)
+		}
 		clearTimeout(debounceTimer)
 		debounceTimer = setTimeout(() => fetchSuggestions(text), 150)
 	})
@@ -216,6 +245,12 @@
 			displayResults(null) // Clear results
 			stopResultsPolling()
 			render()
+			// Reset window size after DOM update
+			setTimeout(() => {
+				if (window.palette && window.palette.resize) {
+					window.palette.resize()
+				}
+			}, 10)
 			setTimeout(() => q.focus(), 0)
 		})
 	}

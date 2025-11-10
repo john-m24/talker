@@ -2,7 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('palette', {
 	onShow: (cb) => ipcRenderer.on('palette:show', cb),
-	hide: () => ipcRenderer.send('palette:hide')
+	hide: () => ipcRenderer.send('palette:hide'),
+	resize: () => ipcRenderer.send('palette:resize')
 })
 
 // Expose configuration (e.g., API base) to the renderer safely
