@@ -8,6 +8,7 @@
 	const chat = document.getElementById('chat')
 	const submitBtn = document.getElementById('submitBtn')
 	const closeBtn = document.getElementById('closeBtn')
+	const ghostText = document.getElementById('ghostText')
 	let suggestions = []
 	let activeIndex = -1
 	let debounceTimer = null
@@ -17,6 +18,7 @@
 		if (!suggestions || suggestions.length === 0) {
 			list.innerHTML = '<div class="placeholder">Start typing to see suggestions</div>'
 			list.hidden = false
+			updateGhostText()
 			return
 		}
 		list.hidden = false
@@ -26,6 +28,52 @@
 				return `<div class="item ${i === activeIndex ? 'active' : ''}" data-idx="${i}">${escapeHtml(label)}</div>`
 			})
 			.join('')
+		updateGhostText()
+	}
+
+	function updateGhostText() {
+		if (!ghostText) return
+		const currentText = q.value
+		
+		// Only show ghost text if there's input and suggestions
+		if (!currentText || !suggestions || suggestions.length === 0) {
+			ghostText.textContent = ''
+			ghostText.style.left = '12px'
+			return
+		}
+		
+		// Get the best suggestion (first one, or active one if selected)
+		const bestSuggestion = activeIndex >= 0 && activeIndex < suggestions.length
+			? suggestions[activeIndex]
+			: suggestions[0]
+		
+		if (!bestSuggestion) {
+			ghostText.textContent = ''
+			ghostText.style.left = '12px'
+			return
+		}
+		
+		// Get the suggestion text
+		const suggestionText = (bestSuggestion && typeof bestSuggestion === 'object')
+			? String(bestSuggestion.text || '')
+			: String(bestSuggestion || '')
+		
+		// Only show ghost text if suggestion extends beyond current input
+		if (suggestionText.toLowerCase().startsWith(currentText.toLowerCase()) && suggestionText.length > currentText.length) {
+			// Show the part that would be autocompleted
+			const remaining = suggestionText.substring(currentText.length)
+			ghostText.textContent = remaining
+			
+			// Measure the width of the current text to position ghost text correctly
+			const canvas = document.createElement('canvas')
+			const context = canvas.getContext('2d')
+			context.font = window.getComputedStyle(q).font
+			const textWidth = context.measureText(currentText).width
+			ghostText.style.left = (12 + textWidth) + 'px'
+		} else {
+			ghostText.textContent = ''
+			ghostText.style.left = '12px'
+		}
 	}
 
 	function escapeHtml(str) {
@@ -138,6 +186,7 @@
 		q.value = ''
 		suggestions = []
 		activeIndex = -1
+		updateGhostText()
 		render()
 		
 		// Hide suggestions list
@@ -171,9 +220,26 @@
 		submitCommand(text)
 	}
 
+	function acceptSuggestion() {
+		// Accept the best suggestion (active one if selected, otherwise first)
+		const bestSuggestion = activeIndex >= 0 && activeIndex < suggestions.length
+			? suggestions[activeIndex]
+			: (suggestions.length > 0 ? suggestions[0] : null)
+		
+		if (bestSuggestion) {
+			const suggestionText = (bestSuggestion && typeof bestSuggestion === 'object')
+				? String(bestSuggestion.text || '')
+				: String(bestSuggestion || '')
+			q.value = suggestionText
+			activeIndex = -1 // Reset active index so chooseActive uses the input value
+			updateGhostText()
+		}
+	}
+
 	q.addEventListener('input', () => {
 		activeIndex = -1
 		const text = q.value
+		updateGhostText()
 		clearTimeout(debounceTimer)
 		debounceTimer = setTimeout(() => fetchSuggestions(text), 150)
 	})
@@ -189,6 +255,19 @@
 			if (!suggestions.length) return
 			activeIndex = (activeIndex - 1 + suggestions.length) % suggestions.length
 			render()
+		} else if (e.key === 'Tab') {
+			e.preventDefault()
+			// If there's a suggestion, accept it and submit
+			if (suggestions.length > 0) {
+				acceptSuggestion()
+				// Auto-submit after accepting
+				setTimeout(() => {
+					chooseActive()
+				}, 0)
+			} else {
+				// No suggestions, just submit current text
+				chooseActive()
+			}
 		} else if (e.key === 'Enter') {
 			e.preventDefault()
 			chooseActive()
@@ -229,6 +308,7 @@
 			activeIndex = -1
 			chat.innerHTML = '' // Clear chat history
 			stopResultsPolling()
+			updateGhostText()
 			render()
 			// Reset window size after DOM update
 			resizeWindow()

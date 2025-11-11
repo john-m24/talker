@@ -16,6 +16,10 @@
         padding: 12px;
         box-sizing: border-box;
       }
+      .input-wrapper {
+        position: relative;
+        width: 100%;
+      }
       .input {
         width: 100%;
         font-size: 16px;
@@ -26,6 +30,19 @@
         color: #eaeaea;
         outline: none;
         box-sizing: border-box;
+        position: relative;
+      }
+      .ghost-text {
+        position: absolute;
+        left: 12px;
+        top: 10px;
+        font-size: 16px;
+        color: #666;
+        pointer-events: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: calc(100% - 24px);
       }
       .list {
         margin-top: 8px;
@@ -128,7 +145,10 @@
   <body>
     <div class="container">
       <div id="chat" class="chat"></div>
-      <input id="q" class="input" type="text" placeholder="Type a command..." autocomplete="off" />
+      <div class="input-wrapper">
+        <input id="q" class="input" type="text" placeholder="Type a command..." autocomplete="off" />
+        <div id="ghostText" class="ghost-text"></div>
+      </div>
       <div id="list" class="list" hidden></div>
       <div class="actions">
         <button id="submitBtn" class="btn">Submit</button>
