@@ -59,7 +59,7 @@ def list_running_apps() -> List[str]:
 
 def list_installed_apps() -> List[str]:
     """
-    Get a list of installed applications from /Applications directory.
+    Get a list of installed applications from common macOS locations.
     Uses cache if enabled.
     
     Returns:
@@ -72,21 +72,28 @@ def list_installed_apps() -> List[str]:
         if cached is not None:
             return cached
     
-    # Cache miss - fetch from filesystem
-    apps = []
-    applications_dir = "/Applications"
+    # Cache miss - fetch from filesystem across multiple locations
+    apps_set = set()
+    candidate_dirs = [
+        "/Applications",
+        "/Applications/Utilities",
+        "/System/Applications",
+        "/System/Applications/Utilities",
+        "/System/Library/CoreServices",  # Finder.app and other system apps
+        os.path.expanduser("~/Applications"),
+    ]
     
     try:
-        if not os.path.exists(applications_dir):
-            return apps
+        for base in candidate_dirs:
+            if not os.path.exists(base):
+                continue
+            for item in os.listdir(base):
+                if item.endswith(".app"):
+                    # Remove .app extension
+                    app_name = item[:-4]
+                    apps_set.add(app_name)
         
-        for item in os.listdir(applications_dir):
-            if item.endswith(".app"):
-                # Remove .app extension
-                app_name = item[:-4]
-                apps.append(app_name)
-        
-        apps = sorted(apps)
+        apps = sorted(apps_set)
         
         # Cache the result (longer TTL for installed apps)
         if cache_manager:
