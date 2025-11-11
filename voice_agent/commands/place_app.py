@@ -16,7 +16,7 @@ class PlaceAppCommand(Command):
         """Execute the place app command."""
         app_name = intent.get("app_name")
         monitor = intent.get("monitor")
-        maximize = intent.get("maximize", False)
+        bounds = intent.get("bounds")
         
         # Handle file opening if specified
         file_path = intent.get("file_path")
@@ -89,32 +89,58 @@ class PlaceAppCommand(Command):
                 # Small delay to let app launch/activate
                 time.sleep(0.5)
         
-        if app_name and monitor:
-            # Check if app is running to provide better feedback
+        if not app_name:
+            print(f"Error: Missing app name in intent\n")
+            return False
+        
+        # Validate bounds if provided
+        if bounds is not None:
+            if not isinstance(bounds, list) or len(bounds) != 4:
+                print(f"Error: bounds must be an array of 4 integers [left, top, right, bottom]\n")
+                return False
+            if not all(isinstance(x, int) for x in bounds):
+                print(f"Error: bounds must contain only integers\n")
+                return False
+        
+        # If bounds provided, use them directly (monitor optional)
+        if bounds is not None:
             from ..window_control import list_running_apps
             running_apps = list_running_apps()
             is_running = app_name in running_apps
             
-            monitor_display = monitor.replace("_", " ").title()
-            maximize_text = " and maximizing" if maximize else ""
-            
             if is_running:
-                print(f"Placing '{app_name}' on {monitor_display} monitor{maximize_text}...")
+                print(f"Placing '{app_name}' at specified bounds...")
             else:
-                print(f"Opening '{app_name}' and placing on {monitor_display} monitor{maximize_text} (app is not currently running)...")
+                print(f"Opening '{app_name}' and placing at specified bounds (app is not currently running)...")
             
-            success = place_app_on_monitor(app_name, monitor, maximize=maximize)
+            success = place_app_on_monitor(app_name, monitor_name=monitor, bounds=bounds)
             if success:
-                print(f"✓ Successfully placed '{app_name}' on {monitor_display} monitor\n")
+                print(f"✓ Successfully placed '{app_name}' at specified bounds\n")
             else:
-                print(f"✗ Failed to place '{app_name}' on {monitor_display} monitor\n")
+                print(f"✗ Failed to place '{app_name}' at specified bounds\n")
             return success
-        else:
-            missing = []
-            if not app_name:
-                missing.append("app name")
-            if not monitor:
-                missing.append("monitor")
-            print(f"Error: Missing {', '.join(missing)} in intent\n")
+        
+        # Otherwise, use monitor-based placement (monitor required)
+        if not monitor:
+            print(f"Error: Missing monitor in intent (required when bounds not provided)\n")
             return False
+        
+        # Check if app is running to provide better feedback
+        from ..window_control import list_running_apps
+        running_apps = list_running_apps()
+        is_running = app_name in running_apps
+        
+        monitor_display = monitor.replace("_", " ").title()
+        
+        if is_running:
+            print(f"Placing '{app_name}' on {monitor_display} monitor...")
+        else:
+            print(f"Opening '{app_name}' and placing on {monitor_display} monitor (app is not currently running)...")
+        
+        success = place_app_on_monitor(app_name, monitor)
+        if success:
+            print(f"✓ Successfully placed '{app_name}' on {monitor_display} monitor\n")
+        else:
+            print(f"✗ Failed to place '{app_name}' on {monitor_display} monitor\n")
+        return success
 

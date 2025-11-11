@@ -116,7 +116,7 @@ class AIAgent:
             "Available commands:",
             "- 'list_apps' or 'list applications' - list running applications",
             "- 'focus_app' - bring an application to the front (will launch the app if it's not running). Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
-            "- 'place_app' - move an application window to a specific monitor (main, right, or left) (will launch the app if it's not running). Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
+            "- 'place_app' - move an application window to a specific monitor or position. Can specify exact bounds [left, top, right, bottom] calculated from monitor dimensions, or use monitor for simple placement. Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
             "- 'switch_tab' - switch to a specific Chrome tab (for existing tabs)",
             "- 'open_url' - open a URL in Chrome by creating a new tab (for new tabs)",
             "- 'list_tabs' - list all open Chrome tabs",
@@ -245,6 +245,20 @@ class AIAgent:
                 f"All installed applications: {', '.join(installed_apps)}"
             )
         
+        # Add monitor context for window placement
+        from .config import MONITORS
+        if MONITORS:
+            monitor_info = []
+            for monitor_name, monitor_config in MONITORS.items():
+                x = monitor_config.get("x", 0)
+                y = monitor_config.get("y", 0)
+                w = monitor_config.get("w", 1920)
+                h = monitor_config.get("h", 1080)
+                monitor_info.append(f"{monitor_name}: {{x: {x}, y: {y}, w: {w}, h: {h}}}")
+            context_parts.append(
+                f"Available monitors: {', '.join(monitor_info)}"
+            )
+        
         context_parts.extend([
             "",
             "User command:",
@@ -269,24 +283,43 @@ class AIAgent:
             "- 'file_name': (for focus_app and place_app, string, optional) file name for fuzzy matching (use this if user says 'open x file in app' or 'open x file in app on monitor')",
             "- 'project_path': (for focus_app and place_app, string, optional) exact project/folder path to open in the app",
             "- 'project_name': (for focus_app and place_app, string, optional) project/folder name - MUST match the EXACT project name from the active projects list. When the user mentions a project name (e.g., 'anythingllm', 'anything llm', 'anything-llm'), find the matching project in the active projects list and use its EXACT name. For example, if the user says 'anythingllm' or 'anything llm', and the active projects list contains 'anything-llm', use 'anything-llm' as the project_name. Match user input to the exact project name from the list, accounting for variations in spacing, hyphens, and case.",
-            "- 'monitor': (for place_app, enum, required) one of 'main', 'right', or 'left' - parse from phrases like 'main monitor', 'right monitor', 'left monitor', 'main screen', 'right screen', 'left screen', 'main display', etc.",
-            "- 'maximize': (for place_app, boolean, optional) true if user wants to maximize the window, false otherwise (default: false)",
+            "- 'monitor': (for place_app, enum, optional) MUST be one of the monitor names from the 'Available monitors' list in context. DO NOT use monitor names that don't exist in the available monitors list. Optional if bounds provided.",
+            "- 'bounds': (for place_app, array<integer>, optional) exact window bounds [left, top, right, bottom] in absolute screen coordinates. AI calculates these based on monitor dimensions and user intent. PREFERRED when user requests positioning like 'left half', 'right side', 'maximize', or specific dimensions.",
             "- 'tab_index': (for switch_tab, integer, required) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab (positive integer, 1-based)",
             "- 'tab_indices': (for close_tab, array<integer>, required) array of tab indices - for single tab use [3], for multiple tabs use [2, 5, 8] (array of positive integers, non-empty, 1-based)",
             "- 'preset_name': (for activate_preset, string, required) the exact preset name from the available presets list (case-insensitive matching is supported) (non-empty string)",
             "",
+            "CRITICAL: Monitor name validation:",
+            "You MUST ONLY use monitor names that appear in the 'Available monitors' list provided in the context.",
+            "If the user says 'right' or 'left' but those monitors don't exist in the available monitors list, DO NOT use them as monitor names.",
+            "Instead, calculate bounds based on the available monitor(s). For example:",
+            "- User says 'put X on right' but only 'main' exists -> calculate bounds for right half of main monitor",
+            "- User says 'put X on left monitor' but only 'main' exists -> calculate bounds for left half of main monitor",
+            "",
             "Monitor placement patterns to recognize:",
-            "- 'put X on [right/left/main] monitor' -> type: 'place_app', monitor: 'right'/'left'/'main'",
-            "- 'move X to [main/right/left] screen/display' -> type: 'place_app', monitor: 'main'/'right'/'left'",
-            "- 'place X on [monitor] and maximize' -> type: 'place_app', monitor: [monitor], maximize: true",
-            "- 'show X on [monitor]' -> type: 'place_app', monitor: [monitor]",
-            "- 'open X on [monitor]' -> type: 'place_app', monitor: [monitor]",
-            "- 'open X file in Y app on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor]",
-            "- 'open X in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor]",
-            "- 'put X file in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor]",
-            "- 'open X project in Y app on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor]",
-            "- 'open X folder in Y on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor]",
-            "- 'open X project in Y on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor]",
+            "- 'put X on [monitor] monitor' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists in available monitors)",
+            "- 'move X to [monitor] screen/display' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists in available monitors)",
+            "- 'put X on left half' or 'snap X to left' -> type: 'place_app', app_name: X, bounds: [monitor_x, monitor_y, monitor_x + monitor_w/2, monitor_y + monitor_h] (use available monitor, calculate bounds)",
+            "- 'put X on right half' or 'snap X to right' -> type: 'place_app', app_name: X, bounds: [monitor_x + monitor_w/2, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use available monitor, calculate bounds)",
+            "- 'resize X to 1200x800' -> type: 'place_app', app_name: X, bounds: [monitor_x + (monitor_w-1200)/2, monitor_y + (monitor_h-800)/2, monitor_x + (monitor_w-1200)/2 + 1200, monitor_y + (monitor_h-800)/2 + 800]",
+            "- 'center X on [monitor]' -> type: 'place_app', app_name: X, monitor: [monitor] (if exists), bounds: [calculate centered based on current window size]",
+            "- 'maximize X' -> type: 'place_app', app_name: X, bounds: [monitor_x, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use available monitor)",
+            "- 'show X on [monitor]' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists)",
+            "- 'open X on [monitor]' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists)",
+            "- 'open X file in Y app on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor] (ONLY if monitor exists)",
+            "- 'open X in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor] (ONLY if monitor exists)",
+            "- 'put X file in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor] (ONLY if monitor exists)",
+            "- 'open X project in Y app on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor] (ONLY if monitor exists)",
+            "- 'open X folder in Y on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor] (ONLY if monitor exists)",
+            "",
+            "Window bounds calculation guidance:",
+            "When user requests positioning (left/right half, maximize, specific dimensions), ALWAYS calculate bounds instead of using monitor names.",
+            "You have access to monitor dimensions in the context. Calculate exact bounds [left, top, right, bottom] based on user intent and monitor coordinates.",
+            "For 'left half': [monitor_x, monitor_y, monitor_x + monitor_w/2, monitor_y + monitor_h] (use first/only available monitor)",
+            "For 'right half': [monitor_x + monitor_w/2, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use first/only available monitor)",
+            "For specific dimensions like '1200x800', center on monitor: [monitor_x + (monitor_w-1200)/2, monitor_y + (monitor_h-800)/2, monitor_x + (monitor_w-1200)/2 + 1200, monitor_y + (monitor_h-800)/2 + 800]",
+            "For 'maximize', use full monitor: [monitor_x, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use first/only available monitor)",
+            "If user mentions a monitor name that doesn't exist, use the available monitor(s) and calculate bounds based on the positioning intent.",
             "",
             "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
             "If no matching app is found in running apps, use the closest match from installed apps.",

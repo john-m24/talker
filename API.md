@@ -80,27 +80,61 @@ The system exposes a set of operations that can be called via structured JSON. T
 ---
 
 ### 3. `place_app`
-**Description:** Move an application window to a specific monitor
+**Description:** Move an application window to a specific monitor or position
 
 **Parameters:**
 - `app_name` (string, required): Exact application name (non-empty string)
-- `monitor` (enum, required): One of "main", "right", "left"
-- `maximize` (boolean, optional): Whether to maximize the window (default: false)
+- `monitor` (enum, optional): One of "main", "right", "left". Optional if bounds provided.
+- `bounds` (array<integer>, optional): Exact window bounds `[left, top, right, bottom]` in absolute screen coordinates. AI calculates these based on monitor dimensions and user intent.
 
 **Type Definitions:**
 - `string`: Non-empty string
 - `enum`: One of the specified values
-- `boolean`: true or false
+- `array<integer>`: Array of 4 integers representing [left, top, right, bottom] coordinates
 
-**Example:**
+**Example (monitor-based placement):**
 ```json
 {
   "type": "place_app",
   "app_name": "Google Chrome",
-  "monitor": "left",
-  "maximize": true
+  "monitor": "left"
 }
 ```
+
+**Example (bounds-based placement - left half):**
+```json
+{
+  "type": "place_app",
+  "app_name": "Google Chrome",
+  "monitor": "right",
+  "bounds": [1920, 0, 2880, 1080]
+}
+```
+
+**Example (bounds-based placement - maximize):**
+```json
+{
+  "type": "place_app",
+  "app_name": "Google Chrome",
+  "bounds": [0, 0, 1920, 1080]
+}
+```
+
+**Example (bounds-based placement - specific size, centered):**
+```json
+{
+  "type": "place_app",
+  "app_name": "Terminal",
+  "monitor": "left",
+  "bounds": [360, 140, 1560, 940]
+}
+```
+
+**Note:** The AI receives monitor context (dimensions) and calculates bounds based on user intent. For example:
+- "left half" → `bounds: [monitor_x, monitor_y, monitor_x + monitor_w/2, monitor_y + monitor_h]`
+- "right half" → `bounds: [monitor_x + monitor_w/2, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h]`
+- "1200x800" → `bounds: [monitor_x + (monitor_w-1200)/2, monitor_y + (monitor_h-800)/2, ...]` (centered)
+- "maximize" → `bounds: [monitor_x, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h]`
 
 ---
 

@@ -1,7 +1,7 @@
 """Window control functions using AppleScript."""
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from .config import MONITORS, CACHE_APPS_TTL
 from .utils import AppleScriptExecutor, escape_applescript_string
 from .cache import get_cache_manager, CacheKeys
@@ -237,20 +237,149 @@ def close_app(app_name: str) -> bool:
         return False
 
 
-def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = False) -> bool:
+def get_window_bounds(app_name: str) -> Optional[tuple[int, int, int, int]]:
     """
-    Place an application's front window on a specific monitor.
+    Get the current bounds of an application's front window.
     
     Args:
-        app_name: Name of the application to move
-        monitor_name: Name of the monitor ("main", "right", or "left")
-        maximize: If True, maximize the window to fill the entire monitor.
-                  If False and app is newly launched, will default to True.
+        app_name: Name of the application
+        
+    Returns:
+        Tuple of (left, top, right, bottom) or None on failure
+    """
+    try:
+        get_size_script = f'''
+        tell application "{app_name}"
+            activate
+            try
+                set currentBounds to bounds of front window
+                return currentBounds
+            on error
+                -- Fallback: try using System Events
+                try
+                    tell application "System Events"
+                        tell process "{app_name}"
+                            set winPos to position of window 1
+                            set winSize to size of window 1
+                            set x1 to item 1 of winPos
+                            set y1 to item 2 of winPos
+                            set w1 to item 1 of winSize
+                            set h1 to item 2 of winSize
+                            return {{x1, y1, x1 + w1, y1 + h1}}
+                        end tell
+                    end tell
+                on error
+                    return {{0, 0, 800, 600}}
+                end try
+            end try
+        end tell
+        '''
+        
+        success, stdout, stderr = _executor.execute(get_size_script, check=True)
+        if not success or not stdout:
+            return None
+        
+        # Parse bounds: {left, top, right, bottom}
+        bounds_str = stdout.replace("{", "").replace("}", "")
+        bounds_parts = [int(p.strip()) for p in bounds_str.split(",")]
+        if len(bounds_parts) == 4:
+            return tuple(bounds_parts)
+        return None
+    except Exception:
+        return None
+
+
+def set_window_bounds(app_name: str, left: int, top: int, right: int, bottom: int) -> bool:
+    """
+    Set the bounds of an application's front window.
+    
+    Args:
+        app_name: Name of the application
+        left: Left edge coordinate
+        top: Top edge coordinate
+        right: Right edge coordinate
+        bottom: Bottom edge coordinate
         
     Returns:
         True if successful, False otherwise
     """
     try:
+        # Check if app is running to determine if we need a delay
+        running_apps = list_running_apps()
+        is_running = app_name in running_apps
+        
+        # If app was just launched, add a delay to let the window appear
+        delay_line = ""
+        if not is_running:
+            delay_line = "            delay 0.5\n"
+        
+        # Use try-catch to handle apps that don't support "count of windows"
+        script = f'''
+        tell application "{app_name}"
+            activate
+{delay_line}            try
+                set bounds of front window to {{{left}, {top}, {right}, {bottom}}}
+                return true
+            on error errMsg
+                -- Some apps don't support "front window" directly, try using System Events
+                try
+                    tell application "System Events"
+                        tell process "{app_name}"
+                            set frontmost to true
+{delay_line}                            set position of window 1 to {{{left}, {top}}}
+                            set size of window 1 to {{{right - left}, {bottom - top}}}
+                        end tell
+                    end tell
+                    return true
+                on error errMsg2
+                    return false
+                end try
+            end try
+        end tell
+        '''
+        
+        success, stdout, stderr = _executor.execute(script)
+        
+        if success:
+            return True
+        else:
+            print(f"Error setting window bounds for '{app_name}': {stderr}")
+            return False
+    except Exception as e:
+        print(f"Unexpected error setting window bounds for '{app_name}': {e}")
+        return False
+
+
+def place_app_on_monitor(app_name: str, monitor_name: Optional[str] = None, maximize: bool = False, bounds: Optional[List[int]] = None) -> bool:
+    """
+    Place an application's front window on a specific monitor or at specific bounds.
+    
+    Args:
+        app_name: Name of the application to move
+        monitor_name: Name of the monitor ("main", "right", or "left"). Optional if bounds provided.
+        maximize: If True, maximize the window to fill the entire monitor.
+                  If False and app is newly launched, will default to True.
+                  Ignored if bounds provided.
+        bounds: Optional list of [left, top, right, bottom] in screen coordinates.
+                If provided, these bounds are used directly.
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # If bounds provided, use them directly
+        if bounds is not None:
+            if len(bounds) != 4:
+                print(f"Error: bounds must be a list of 4 integers [left, top, right, bottom]")
+                return False
+            left, top, right, bottom = bounds
+            return set_window_bounds(app_name, left, top, right, bottom)
+        
+        # Otherwise, use monitor-based placement (existing behavior)
+        if monitor_name is None:
+            print(f"Error: Either monitor_name or bounds must be provided")
+            return False
+        
         # Check if app is running before we activate it
         # If not running, default to maximizing when launched
         running_apps = list_running_apps()
@@ -286,121 +415,31 @@ def place_app_on_monitor(app_name: str, monitor_name: str, maximize: bool = Fals
             bottom = y + h
         else:
             # Try to preserve current window size, but ensure it fits on the monitor
-            # First, get current window size
-            get_size_script = f'''
-            tell application "{app_name}"
-                activate
-                try
-                    set currentBounds to bounds of front window
-                    return currentBounds
-                on error
-                    -- Fallback: try using System Events
-                    try
-                        tell application "System Events"
-                            tell process "{app_name}"
-                                set winPos to position of window 1
-                                set winSize to size of window 1
-                                set x1 to item 1 of winPos
-                                set y1 to item 2 of winPos
-                                set w1 to item 1 of winSize
-                                set h1 to item 2 of winSize
-                                return {{x1, y1, x1 + w1, y1 + h1}}
-                            end tell
-                        end tell
-                    on error
-                        return {{0, 0, 800, 600}}
-                    end try
-                end try
-            end tell
-            '''
-            
-            try:
-                success, stdout, stderr = _executor.execute(get_size_script, check=True)
-                if not success or not stdout:
-                    raise Exception(f"Failed to get window size: {stderr}")
+            current_bounds = get_window_bounds(app_name)
+            if current_bounds:
+                current_left, current_top, current_right, current_bottom = current_bounds
+                current_w = current_right - current_left
+                current_h = current_bottom - current_top
                 
-                # Parse bounds: {left, top, right, bottom}
-                bounds_str = stdout.replace("{", "").replace("}", "")
-                bounds_parts = [int(p.strip()) for p in bounds_str.split(",")]
-                if len(bounds_parts) == 4:
-                    current_left, current_top, current_right, current_bottom = bounds_parts
-                    current_w = current_right - current_left
-                    current_h = current_bottom - current_top
-                    
-                    # Ensure window fits on monitor
-                    window_w = min(current_w, w)
-                    window_h = min(current_h, h)
-                    
-                    left = x
-                    top = y
-                    right = x + window_w
-                    bottom = y + window_h
-                else:
-                    # Fallback to default size
-                    left = x
-                    top = y
-                    right = x + min(800, w)
-                    bottom = y + min(600, h)
-            except Exception:
-                # Fallback to default size if we can't get current size
+                # Ensure window fits on monitor
+                window_w = min(current_w, w)
+                window_h = min(current_h, h)
+                
+                left = x
+                top = y
+                right = x + window_w
+                bottom = y + window_h
+            else:
+                # Fallback to default size
                 left = x
                 top = y
                 right = x + min(800, w)
                 bottom = y + min(600, h)
         
-        # Move and resize the window
-        # If app was just launched, add a delay to let the window appear
-        delay_line = ""
-        if not is_running:
-            delay_line = "            delay 0.5\n"
-        
-        # Use try-catch to handle apps that don't support "count of windows"
-        script = f'''
-        tell application "{app_name}"
-            activate
-{delay_line}            try
-                set bounds of front window to {{{left}, {top}, {right}, {bottom}}}
-                return true
-            on error errMsg
-                -- Some apps don't support "front window" directly, try using System Events
-                try
-                    tell application "System Events"
-                        tell process "{app_name}"
-                            set frontmost to true
-{delay_line}                            set position of window 1 to {{{left}, {top}}}
-                            set size of window 1 to {{{right - left}, {bottom - top}}}
-                        end tell
-                    end tell
-                    return true
-                on error errMsg2
-                    return false
-                end try
-            end try
-        end tell
-        '''
-        
-        # Debug: Print the AppleScript being executed
-        print(f"DEBUG: AppleScript to execute:")
-        print(script)
-        print(f"DEBUG: Window bounds: left={left}, top={top}, right={right}, bottom={bottom}")
-        
-        success, stdout, stderr = _executor.execute(script)
-        
-        # Debug: Print the result
-        print(f"DEBUG: AppleScript success: {success}")
-        if stdout:
-            print(f"DEBUG: AppleScript stdout: {stdout}")
-        if stderr:
-            print(f"DEBUG: AppleScript stderr: {stderr}")
-        
-        if success:
-            return True
-        else:
-            print(f"Error placing '{app_name}' on {monitor_name} monitor: {stderr}")
-            return False
+        return set_window_bounds(app_name, left, top, right, bottom)
             
     except Exception as e:
-        print(f"Unexpected error placing '{app_name}' on {monitor_name} monitor: {e}")
+        print(f"Unexpected error placing '{app_name}': {e}")
         import traceback
         traceback.print_exc()
         return False

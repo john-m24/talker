@@ -99,10 +99,10 @@ class Config:
         # Default: Single monitor setup
         # To add more monitors, uncomment and adjust the "right" and "left" entries below
         self.monitors = {
-            # "main": {"x": 0, "y": 0, "w": 1920, "h": 1080},  # Main monitor (1920x1080)
-            "right": {"x": 1920, "y": 0, "w": 1920, "h": 1080},  # Right monitor (1920x1080)
+            "main": {"x": 0, "y": 0, "w": 1512, "h": 982},  # Main monitor (1920x1080)
+            # "right": {"x": 1920, "y": 0, "w": 1920, "h": 1080},  # Right monitor (1920x1080)
             # Uncomment below to add a left monitor:
-            "left": {"x": 0, "y": 0, "w": 1920, "h": 1080},  # Left monitor (standard 1920x1080)
+            # "left": {"x": 0, "y": 0, "w": 1920, "h": 1080},  # Left monitor (standard 1920x1080)
         }
         
         # Validate configuration

@@ -171,7 +171,8 @@ Both voice and text modes work simultaneously - use whichever is more convenient
 ### Example Commands
 
 - **Focus an app**: "Bring Docker to view", "Focus Chrome", "Show Slack"
-- **Place app on monitor**: "Put Chrome on left monitor", "Move Cursor to right screen", "Place Terminal on main monitor and maximize"
+- **Place app on monitor**: "Put Chrome on left monitor", "Move Cursor to right screen", "Place Terminal on main monitor"
+- **Window resizing and snapping**: "Put Chrome on left half of right monitor", "Snap Cursor to right side", "Resize Terminal to 1200x800", "Center Slack on left monitor", "Maximize Chrome"
 - **List apps**: "List apps", "What's running", "Show me my open applications"
 - **Activate preset**: "Activate code space", "code space", "Set up development", "Load browsing"
 - **Switch Chrome tabs**: "Switch to Gmail", "Go to tab 3", "List tabs"
