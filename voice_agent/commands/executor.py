@@ -12,6 +12,7 @@ from .switch_tab import SwitchTabCommand
 from .close_app import CloseAppCommand
 from .close_tab import CloseTabCommand
 from .activate_preset import ActivatePresetCommand
+from .query import QueryCommand
 
 
 class CommandExecutor:
@@ -30,6 +31,7 @@ class CommandExecutor:
             CloseAppCommand(),
             CloseTabCommand(),
             ActivatePresetCommand(),
+            QueryCommand(),
         ]
     
     def execute(self, intent: Any, running_apps: list = None, chrome_tabs: list = None, recent_files: list = None, active_projects: list = None, current_project: dict = None) -> bool:

@@ -206,6 +206,26 @@ The system exposes a set of operations that can be called via structured JSON. T
 
 ---
 
+### 9. `query`
+**Description:** Answer general questions about system state (tabs, apps, files, projects, history) using available context. Returns natural-language answers; does not execute any command.
+
+**Parameters:**
+- `question` (string, required): The user's question
+
+**Example:**
+```json
+{
+  "type": "query",
+  "question": "What are my oldest tabs right now?"
+}
+```
+
+**Notes:**
+- The system answers based on current context (running apps, installed apps, tabs, recent files, projects).
+- Recent query Q&A are kept in memory for follow-up context within the current run.
+
+---
+
 ## Request Format
 
 All operations are called via a JSON object with:

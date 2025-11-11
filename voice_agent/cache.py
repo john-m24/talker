@@ -24,6 +24,7 @@ class CacheKeys:
     RECENT_FILES = "recent_files"
     ACTIVE_PROJECTS = "active_projects"
     CURRENT_PROJECT = "current_project"
+    RECENT_QUERIES = "recent_queries"
     
     @staticmethod
     def llm_response(text_hash: str) -> str:
@@ -178,6 +179,51 @@ class CacheManager:
     def invalidate_all(self) -> None:
         """Invalidate all cache entries."""
         self._cache.clear()
+    
+    def add_query_response(self, question: str, answer: str) -> None:
+        """
+        Add a query Q&A pair to in-memory recent queries (session-scoped best-effort).
+        
+        Args:
+            question: User question text
+            answer: Answer text
+        """
+        if not self.enabled:
+            return
+        
+        try:
+            recent = self.get(CacheKeys.RECENT_QUERIES, []) or []
+            # Prepend newest
+            recent.insert(0, {
+                "question": str(question or "").strip(),
+                "answer": str(answer or "").strip(),
+                "timestamp": time.time(),
+            })
+            # Keep last 10
+            if len(recent) > 10:
+                recent = recent[:10]
+            # Store with no TTL (in-memory only)
+            self.set(CacheKeys.RECENT_QUERIES, recent, ttl=0)
+        except Exception:
+            # Fail silently; query context is best-effort
+            pass
+    
+    def get_recent_queries(self, max_count: int = 10) -> List[Dict]:
+        """
+        Get recent query Q&A pairs (most recent first).
+        
+        Args:
+            max_count: Maximum number of entries to return
+        
+        Returns:
+            List of {'question', 'answer', 'timestamp'} dicts
+        """
+        if not self.enabled:
+            return []
+        recent = self.get(CacheKeys.RECENT_QUERIES, []) or []
+        if not isinstance(recent, list):
+            return []
+        return recent[:max_count]
     
     def add_to_history(self, command: str) -> None:
         """

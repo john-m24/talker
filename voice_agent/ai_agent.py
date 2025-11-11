@@ -81,6 +81,15 @@ class AIAgent:
         if pattern_result is not None:
             return pattern_result
         
+        # Simple question detection (handle as 'query' without LLM when clear)
+        question_starts = ("what", "which", "when", "where", "why", "who", "how")
+        if normalized_text.endswith("?") or normalized_text.startswith(question_starts):
+            return {
+                "commands": [{"type": "query", "question": text.strip()}],
+                "needs_clarification": False,
+                "clarification_reason": None,
+            }
+        
         # Tier 3: Fall back to LLM with text-only cache (slow, ~500-2000ms, only when needed)
         # Generate text-only cache key (normalized text hash)
         cache_key = None
@@ -115,9 +124,26 @@ class AIAgent:
             "- 'activate_preset' - activate a named preset window layout",
             "- 'list_recent_files' - list recently opened files",
             "- 'list_projects' - list active projects",
+            "- 'query' - answer general questions about tabs, apps, files, projects, and system state",
             "",
             f"Currently running applications: {', '.join(running_apps) if running_apps else 'None'}",
         ]
+        
+        # Include recent query responses if available (for follow-ups)
+        try:
+            if self.cache_manager and hasattr(self.cache_manager, "get_recent_queries"):
+                recent_q = self.cache_manager.get_recent_queries(max_count=5)  # type: ignore[attr-defined]
+                if recent_q:
+                    qa_lines = []
+                    for qa in recent_q:
+                        q = str(qa.get("question", "")).strip()
+                        a = str(qa.get("answer", "")).strip()
+                        if q and a:
+                            qa_lines.append(f"Q: {q}\nA: {a}")
+                    if qa_lines:
+                        context_parts.append("Recent query responses (for context, most recent first):\n" + "\n\n".join(qa_lines))
+        except Exception:
+            pass
         
         # Add file context if available
         if recent_files:
@@ -312,6 +338,11 @@ class AIAgent:
             "- 'go to the tab with reddit and local AI' -> Analyze all tabs, find the one with 'reddit' and 'local AI' in content summary, return tab_index",
             "- 'open github' -> Analyze all tabs, find the one with 'github.com' in domain/URL, return tab_index",
             "- 'switch to tab about Python' -> Analyze all tabs, find the one with 'Python' in content summary or title, return tab_index",
+            "",
+            "QUESTION DETECTION:",
+            "- If the input is a question (starts with who/what/when/where/why/how or ends with '?'), return a single 'query' intent:",
+            "  {\"type\": \"query\", \"question\": \"[user's original question]\"}",
+            "- Do not generate commands when it's clearly a question.",
             "",
             "CRITICAL: You MUST return 'tab_index' (integer) for switch_tab or 'tab_indices' (array<integer>) for close_tab when you find matching tab(s).",
             "Do NOT return 'tab_title' or 'content_query' - return the specific 'tab_index' or 'tab_indices' of the matching tab(s).",
@@ -510,4 +541,142 @@ class AIAgent:
                             result["clarification_reason"] = f"Preset '{preset_name}' not found in available presets"
         
         return result
+
+    def answer_query(
+        self,
+        question: str,
+        running_apps: Optional[List[str]] = None,
+        installed_apps: Optional[List[str]] = None,
+        chrome_tabs: Optional[List[Dict[str, Union[str, int]]]] = None,
+        recent_files: Optional[List[Dict]] = None,
+        active_projects: Optional[List[Dict]] = None,
+        current_project: Optional[Dict] = None,
+        available_presets: Optional[List[str]] = None,
+        command_history: Optional[List[str]] = None,
+        recent_queries: Optional[List[Dict]] = None,
+    ) -> str:
+        """
+        Answer a general question using the LLM with all available context.
+        Returns a concise natural-language answer.
+        """
+        context_parts: List[str] = [
+            "You are a helpful macOS assistant with access to system information.",
+            "Answer the user's question based on the context provided below.",
+            "",
+            "=== SYSTEM CONTEXT ===",
+        ]
+        
+        if running_apps:
+            context_parts.append(f"Running applications ({len(running_apps)}): {', '.join(running_apps)}")
+        else:
+            context_parts.append("Running applications: None")
+        
+        if installed_apps:
+            apps_preview = ", ".join(installed_apps[:50])
+            more = f"... and {len(installed_apps) - 50} more" if len(installed_apps) > 50 else ""
+            context_parts.append(f"Installed applications ({len(installed_apps)} total): {apps_preview}")
+            if more:
+                context_parts.append(more)
+        
+        if chrome_tabs:
+            context_parts.append(f"\nOpen Chrome tabs ({len(chrome_tabs)} total):")
+            for tab in chrome_tabs:
+                domain = tab.get('domain', 'N/A')
+                title = tab.get('title', 'N/A')
+                url = tab.get('url', '')
+                index = tab.get('index', '?')
+                active = " (ACTIVE)" if tab.get('is_active') else ""
+                window = f" [Window {tab.get('window_index', '?')}]" if tab.get('window_index') else ""
+                tab_str = f"  Tab {index} [{domain}]{active}{window}: {title}"
+                if url:
+                    tab_str += f" | {url}"
+                content_summary = tab.get('content_summary', '')
+                if content_summary:
+                    content_preview = content_summary[:200] + "..." if len(content_summary) > 200 else content_summary
+                    tab_str += f"\n    Content: {content_preview}"
+                context_parts.append(tab_str)
+        else:
+            context_parts.append("\nOpen Chrome tabs: None")
+        
+        if recent_files:
+            context_parts.append(f"\nRecently opened files ({len(recent_files)} shown):")
+            for f in recent_files[:20]:
+                file_name = f.get('name', 'Unknown')
+                file_type = f.get('type', 'other')
+                app = f.get('app', '')
+                path = f.get('path', '')
+                line = f"  - {file_name} ({file_type}"
+                if app:
+                    line += f", opened in {app}"
+                line += ")"
+                context_parts.append(line)
+                if path:
+                    context_parts.append(f"    Path: {path}")
+        
+        if active_projects:
+            context_parts.append(f"\nActive projects ({len(active_projects)}):")
+            for p in active_projects:
+                name = p.get('name', 'Unknown')
+                path = p.get('path', '')
+                if path:
+                    context_parts.append(f"  - {name} ({path})")
+                else:
+                    context_parts.append(f"  - {name}")
+        
+        if current_project:
+            project_name = current_project.get('name', 'Unknown')
+            project_path = current_project.get('path', '')
+            context_parts.append(f"\nCurrent project: {project_name}")
+            if project_path:
+                context_parts.append(f"  Path: {project_path}")
+        
+        if available_presets:
+            context_parts.append(f"\nAvailable presets: {', '.join(available_presets)}")
+        
+        if command_history:
+            history_preview = [h for h in command_history[:10] if isinstance(h, str)]
+            if history_preview:
+                context_parts.append(f"\nRecent commands ({len(history_preview)}):")
+                for h in history_preview:
+                    context_parts.append(f"  - {h}")
+        
+        if recent_queries:
+            qa_lines = []
+            for qa in recent_queries[:5]:
+                q = str(qa.get("question", "")).strip()
+                a = str(qa.get("answer", "")).strip()
+                if q and a:
+                    qa_lines.append(f"Q: {q}\nA: {a}")
+            if qa_lines:
+                context_parts.append("\nRecent query responses (most recent first):\n" + "\n\n".join(qa_lines))
+        
+        context_parts.extend([
+            "",
+            "=== USER QUESTION ===",
+            question.strip(),
+            "",
+            "Provide a clear, concise, and accurate answer grounded in the context.",
+            "If the answer is not derivable from the context, say so briefly.",
+        ])
+        
+        prompt = "\n".join(context_parts)
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that answers questions about the user's system state, applications, tabs, files, and projects. Provide clear, accurate answers based on the context provided."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            return f"Sorry, I couldn't answer that due to an error: {e}"
 
