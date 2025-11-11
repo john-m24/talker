@@ -162,12 +162,9 @@ def activate_app(app_name: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    # Check if app is installed first
-    installed_apps = list_installed_apps()
-    if app_name not in installed_apps:
-        print(f"Error: Application '{app_name}' is not installed")
-        return False
-    
+    # Try to activate first - macOS can often find apps even if they're not
+    # in the standard directories we scan. Only check installed apps as a
+    # fallback if activation fails.
     try:
         # First, try to activate (this will launch the app if it's not running)
         script = f'tell application "{app_name}" to activate'
@@ -175,6 +172,12 @@ def activate_app(app_name: str) -> bool:
         
         if success:
             return True
+        
+        # If activate failed, check if app is installed to provide better error message
+        installed_apps = list_installed_apps()
+        if app_name not in installed_apps:
+            print(f"Error: Application '{app_name}' is not installed")
+            return False
         
         # If activate failed, try explicitly launching the app
         # This handles cases where the app name might need to be resolved
