@@ -9,6 +9,7 @@ from .list_projects import ListProjectsCommand
 from .focus_app import FocusAppCommand
 from .place_app import PlaceAppCommand
 from .switch_tab import SwitchTabCommand
+from .open_url import OpenUrlCommand
 from .close_app import CloseAppCommand
 from .close_tab import CloseTabCommand
 from .activate_preset import ActivatePresetCommand
@@ -28,6 +29,7 @@ class CommandExecutor:
             FocusAppCommand(),
             PlaceAppCommand(),
             SwitchTabCommand(),
+            OpenUrlCommand(),
             CloseAppCommand(),
             CloseTabCommand(),
             ActivatePresetCommand(),

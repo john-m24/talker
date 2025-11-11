@@ -504,3 +504,73 @@ def close_chrome_tabs_by_indices(tab_indices: List[int]) -> int:
         print(f"Unexpected error closing Chrome tabs: {e}")
         return 0
 
+
+def _normalize_url(url: str) -> str:
+    """
+    Normalize a URL by adding protocol if missing and handling common site names.
+    
+    Args:
+        url: URL string (may be just a domain name or site name)
+        
+    Returns:
+        Normalized URL with protocol
+    """
+    url = url.strip()
+    if not url:
+        return url
+    
+    # If it already has a protocol, return as-is
+    if url.startswith(('http://', 'https://')):
+        return url
+    
+    # If it looks like a domain (contains dots), add https://
+    if '.' in url:
+        return f"https://{url}"
+    
+    # Otherwise, treat as a site name and add .com
+    # Common site names like "chatgpt" -> "chatgpt.com"
+    return f"https://{url}.com"
+
+
+def open_url_in_chrome(url: str) -> bool:
+    """
+    Open a URL in Chrome by creating a new tab.
+    Always creates a new tab - does not check for existing tabs.
+    The AI should decide whether to use switch_tab or open_url.
+    
+    Args:
+        url: URL to open (will be normalized if needed)
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not url:
+            print("Error: No URL specified")
+            return False
+        
+        # Normalize the URL
+        normalized_url = _normalize_url(url)
+        
+        # Escape the URL for AppleScript
+        escaped_url = escape_applescript_string(normalized_url)
+        
+        # Open URL in new tab
+        script = f'''
+        tell application "Google Chrome"
+            activate
+            open location "{escaped_url}"
+        end tell
+        '''
+        
+        success, stdout, stderr = _executor.execute(script)
+        
+        if success:
+            return True
+        else:
+            print(f"Error opening URL in Chrome: {stderr}")
+            return False
+    except Exception as e:
+        print(f"Unexpected error opening URL in Chrome: {e}")
+        return False
+

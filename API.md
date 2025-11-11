@@ -158,7 +158,39 @@ The system exposes a set of operations that can be called via structured JSON. T
 
 ---
 
-### 7. `close_tab`
+### 7. `open_url`
+**Description:** Open a URL in Chrome by creating a new tab
+
+**Parameters:**
+- `url` (string, required): URL to open (non-empty string). The system will normalize the URL if needed (e.g., adds https:// if missing, handles common site names like "chatgpt" → "chatgpt.com")
+
+**Type Definitions:**
+- `string`: Non-empty string
+
+**Example:**
+```json
+{
+  "type": "open_url",
+  "url": "https://chatgpt.com"
+}
+```
+
+**Example (site name, will be normalized):**
+```json
+{
+  "type": "open_url",
+  "url": "chatgpt"
+}
+```
+
+**Note:** 
+- This command always creates a new tab. The AI should decide between `switch_tab` (for existing tabs) and `open_url` (for new tabs) based on user intent.
+- Use `switch_tab` when user wants to go to an existing tab (e.g., "go to github", "switch to reddit tab").
+- Use `open_url` when user explicitly wants to open a new tab (e.g., "open chatgpt in chrome", "open a new tab for github").
+
+---
+
+### 8. `close_tab`
 **Description:** Close one or more Chrome tabs
 
 **Parameters:**
@@ -187,7 +219,7 @@ The system exposes a set of operations that can be called via structured JSON. T
 
 ---
 
-### 8. `activate_preset`
+### 9. `activate_preset`
 **Description:** Activate a named preset window layout
 
 **Parameters:**
@@ -206,7 +238,7 @@ The system exposes a set of operations that can be called via structured JSON. T
 
 ---
 
-### 9. `query`
+### 10. `query`
 **Description:** Answer general questions about system state (tabs, apps, files, projects, history) using available context. Returns natural-language answers; does not execute any command.
 
 **Parameters:**
