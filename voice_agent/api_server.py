@@ -22,6 +22,12 @@ _results_data: Optional[Dict[str, Any]] = None
 _results_consumed = False
 _results_lock = threading.Lock()
 
+# Thread-safe request/response store
+_pending_request: Optional[Dict[str, Any]] = None
+_request_response: Optional[Dict[str, Any]] = None
+_request_lock = threading.Lock()
+_request_event = threading.Event()
+
 
 def _build_context(cache_manager) -> Dict[str, Any]:
 	"""Build context dict consistent with existing web dialog suggest route."""
@@ -118,6 +124,40 @@ def _create_app() -> Flask:
 				return jsonify({"results": _results_data})
 			return jsonify({"results": None})
 
+	@app.route("/get-request", methods=["GET", "OPTIONS"])
+	def get_request():
+		"""Get pending request if available (for clarifications, etc.)."""
+		if request.method == "OPTIONS":
+			return ("", 204)
+		global _pending_request
+		with _request_lock:
+			if _pending_request:
+				# Return request and mark as consumed
+				request_data = _pending_request
+				_pending_request = None
+				return jsonify({"request": request_data})
+			return jsonify({"request": None})
+
+	@app.route("/submit-response", methods=["POST", "OPTIONS"])
+	def submit_response():
+		"""Submit response to pending request."""
+		if request.method == "OPTIONS":
+			return ("", 204)
+		try:
+			data = request.get_json(silent=True) or {}
+			response_type = data.get('type', '')
+			if not response_type:
+				return jsonify({'status': 'error', 'message': 'missing type'}), 400
+			
+			global _request_response, _request_event
+			with _request_lock:
+				_request_response = data
+				_request_event.set()  # Signal that response is ready
+			
+			return jsonify({'status': 'ok'})
+		except Exception as e:
+			return jsonify({'status': 'error', 'message': str(e)}), 500
+
 	return app
 
 
@@ -176,5 +216,47 @@ def send_error(message: str) -> None:
 			"error": message
 		}
 		_results_consumed = False
+
+
+def send_request(request_type: str, request_data: Dict[str, Any]) -> None:
+	"""
+	Send a request to Electron client (e.g., clarification request).
+	
+	Args:
+		request_type: Type of request (e.g., "clarification")
+		request_data: Request-specific data
+	"""
+	global _pending_request, _request_response, _request_event
+	with _request_lock:
+		# Clear any previous response
+		_request_response = None
+		_request_event.clear()
+		# Set new request
+		_pending_request = {
+			"type": request_type,
+			**request_data
+		}
+
+
+def wait_for_response(timeout: Optional[float] = None) -> Optional[Dict[str, Any]]:
+	"""
+	Wait for response from Electron client.
+	
+	Args:
+		timeout: Optional timeout in seconds (None = wait indefinitely)
+		
+	Returns:
+		Response dictionary if received, None if timeout or cancelled
+	"""
+	global _request_response, _request_event
+	
+	# Wait for response event
+	if _request_event.wait(timeout=timeout):
+		with _request_lock:
+			response = _request_response
+			_request_response = None
+			_request_event.clear()
+			return response
+	return None
 
 

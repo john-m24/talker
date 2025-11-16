@@ -13,6 +13,8 @@
 	let activeIndex = -1
 	let debounceTimer = null
 	let resultsPollInterval = null
+	let requestPollInterval = null
+	let currentRequest = null  // Stores current request (type, data)
 
 	function render() {
 		if (!suggestions || suggestions.length === 0) {
@@ -117,6 +119,13 @@
 			data.items.forEach(item => {
 				html += `<div class="message-item">${escapeHtml(item)}</div>`
 			})
+		} else if (data.clarification) {
+			// Clarification request
+			html += `<div class="message-title">⚠️ Clarification Needed</div>`
+			if (data.clarification.reason) {
+				html += `<div class="message-item">${escapeHtml(data.clarification.reason)}</div>`
+			}
+			html += `<div class="message-item">Please confirm or correct the command:</div>`
 		}
 		
 		html += '</div>'
@@ -175,7 +184,102 @@
 		}, 200) // Poll every 200ms - no timeout needed since we always get a response
 	}
 
+	function stopRequestPolling() {
+		if (requestPollInterval) {
+			clearInterval(requestPollInterval)
+			requestPollInterval = null
+		}
+	}
+
+	function startRequestPolling() {
+		stopRequestPolling()
+
+		requestPollInterval = setInterval(async () => {
+			// Don't poll if we're already handling a request
+			if (currentRequest) return
+
+			try {
+				const res = await fetch(`${API_BASE}/get-request`)
+				if (!res.ok) return
+				const data = await res.json()
+				if (data.request) {
+					// Request received - handle based on type
+					stopRequestPolling()
+					
+					if (data.request.type === 'clarification') {
+						// Store current request
+						currentRequest = data.request
+						
+						// Display clarification in chat
+						addSystemMessage({
+							clarification: {
+								text: data.request.text,
+								reason: data.request.reason
+							}
+						})
+						
+						// Pre-fill input with transcribed text
+						q.value = data.request.text || ''
+						updateGhostText()
+						
+						// Focus input for editing
+						setTimeout(() => q.focus(), 0)
+					}
+				}
+			} catch (e) {
+				// Ignore errors
+			}
+		}, 200) // Poll every 200ms
+	}
+
 	async function submitCommand(text) {
+		// Check if we're in clarification mode
+		if (currentRequest && currentRequest.type === 'clarification') {
+			// Submit clarification response
+			const responsePayload = {
+				type: 'clarification',
+				text: String(text || '').trim()
+			}
+			
+			// Clear current request
+			currentRequest = null
+			
+			// Add user message to chat
+			if (responsePayload.text) {
+				addUserMessage(responsePayload.text)
+			}
+			
+			// Clear input
+			q.value = ''
+			suggestions = []
+			activeIndex = -1
+			updateGhostText()
+			render()
+			
+			// Hide suggestions list
+			list.hidden = true
+			
+			try {
+				const res = await fetch(`${API_BASE}/submit-response`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(responsePayload)
+				})
+				if (!res.ok) {
+					console.error('submit-response failed', res.status)
+					addSystemMessage({ error: 'Failed to submit response' })
+					return
+				}
+				// Resume request polling for future requests
+				startRequestPolling()
+			} catch (e) {
+				console.error('submit-response error', e)
+				addSystemMessage({ error: 'Error submitting response' })
+			}
+			return
+		}
+		
+		// Normal command submission
 		const payload = { command: String(text || '').trim() }
 		if (!payload.command) return
 		
@@ -272,6 +376,39 @@
 			e.preventDefault()
 			chooseActive()
 		} else if (e.key === 'Escape') {
+			// If in clarification mode, cancel it
+			if (currentRequest && currentRequest.type === 'clarification') {
+				e.preventDefault()
+				// Submit cancellation
+				const cancelPayload = {
+					type: 'clarification',
+					cancelled: true
+				}
+				
+				// Clear current request
+				currentRequest = null
+				
+				// Clear input
+				q.value = ''
+				suggestions = []
+				activeIndex = -1
+				updateGhostText()
+				render()
+				
+				// Submit cancellation
+				fetch(`${API_BASE}/submit-response`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(cancelPayload)
+				}).catch(() => {
+					// Ignore errors
+				})
+				
+				// Resume request polling
+				startRequestPolling()
+				return
+			}
+			
 			if (window.palette && window.palette.hide) {
 				window.palette.hide()
 			}
@@ -307,17 +444,22 @@
 			suggestions = []
 			activeIndex = -1
 			chat.innerHTML = '' // Clear chat history
+			currentRequest = null // Clear any pending request
 			stopResultsPolling()
+			stopRequestPolling()
 			updateGhostText()
 			render()
 			// Reset window size after DOM update
 			resizeWindow()
+			// Start request polling
+			startRequestPolling()
 			setTimeout(() => q.focus(), 0)
 		})
 	}
 
-	// Initial render
+	// Initial render and start request polling
 	render()
+	startRequestPolling()
 })()
 
 

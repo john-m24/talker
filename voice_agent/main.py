@@ -8,7 +8,7 @@ from .stt.factory import set_cached_engine
 from .ai_agent import AIAgent
 from .window_control import list_running_apps, list_installed_apps
 from .tab_control import list_chrome_tabs_with_content
-from .clarification import show_clarification_dialog
+from .api_server import send_request, wait_for_response, trigger_palette
 from .commands import CommandExecutor
 from .config import (
     LLM_ENDPOINT, STT_ENGINE, HOTKEY, TEXT_HOTKEY, WHISPER_MODEL,
@@ -105,13 +105,22 @@ def handle_clarification(
     if clarification_reason:
         print(f"   Reason: {clarification_reason}")
     
-    # Show clarification dialog
-    confirmed_text = show_clarification_dialog(text, reason=clarification_reason)
+    # Send clarification request to Electron client
+    trigger_palette()  # Ensure Electron window is visible
+    send_request("clarification", {"text": text, "reason": clarification_reason})
     
-    if confirmed_text is None:
+    # Wait for user response
+    response = wait_for_response()
+    
+    if response is None or response.get("cancelled", False):
         # User cancelled
         print("   Clarification cancelled, skipping command.\n")
         return None, None
+    
+    confirmed_text = response.get("text", "").strip()
+    # If empty text, treat as "use original text" (confirm without changes)
+    if not confirmed_text:
+        confirmed_text = text
     
     if confirmed_text != text:
         # User corrected the text, re-parse intent
