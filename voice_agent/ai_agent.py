@@ -151,6 +151,20 @@ class AIAgent:
                 activity_history = self.cache_manager.get_activity_history(max_count=20)  # type: ignore[attr-defined]
                 if activity_history:
                     import time
+                    from .monitoring import get_active_app, get_active_chrome_tab
+                    
+                    # Get current state to filter out command-initiated activities
+                    current_app = None
+                    current_tab_index = None
+                    try:
+                        current_app = get_active_app()
+                        current_tab = get_active_chrome_tab()
+                        if current_tab:
+                            current_tab_index = current_tab.get("index")
+                    except Exception:
+                        # If state retrieval fails, fall back to showing all activities
+                        pass
+                    
                     activity_lines = []
                     for activity in activity_history:
                         action = activity.get("action", "")
@@ -162,11 +176,17 @@ class AIAgent:
                         if action == "switch_tab":
                             from_tab = details.get("from_tab")
                             to_tab = details.get("to_tab")
+                            # Skip if this activity switched TO the current tab (command-initiated)
+                            if to_tab == current_tab_index:
+                                continue
                             tab_info = details.get("tab_info", {})
                             title = tab_info.get("title", "")
                             activity_lines.append(f"  {age_str}: Switched from tab {from_tab} to tab {to_tab} ({title})")
                         elif action == "activate_app":
                             app_name = details.get("app_name", "")
+                            # Skip if this activity activated the current app (command-initiated)
+                            if app_name == current_app:
+                                continue
                             previous_app = details.get("previous_app")
                             if previous_app:
                                 activity_lines.append(f"  {age_str}: Activated {app_name} (was {previous_app})")
@@ -174,6 +194,9 @@ class AIAgent:
                                 activity_lines.append(f"  {age_str}: Activated {app_name}")
                         elif action == "place_app":
                             app_name = details.get("app_name", "")
+                            # Skip if this activity moved the current app (command-initiated)
+                            if app_name == current_app:
+                                continue
                             activity_lines.append(f"  {age_str}: Moved {app_name} window")
                         elif action == "close_tab":
                             closed_tabs = details.get("closed_tabs", [])
@@ -183,7 +206,7 @@ class AIAgent:
                             activity_lines.append(f"  {age_str}: Opened URL {url}")
                     
                     if activity_lines:
-                        context_parts.append("\nRecent activity history (most recent first):\n" + "\n".join(activity_lines))
+                        context_parts.append("\nRecent activity history (most recent first, excluding command-initiated actions):\n" + "\n".join(activity_lines))
         except Exception:
             pass
         
@@ -748,6 +771,20 @@ class AIAgent:
                 activity_history = cache_manager.get_activity_history(max_count=20)  # type: ignore[attr-defined]
                 if activity_history:
                     import time
+                    from .monitoring import get_active_app, get_active_chrome_tab
+                    
+                    # Get current state to filter out command-initiated activities
+                    current_app = None
+                    current_tab_index = None
+                    try:
+                        current_app = get_active_app()
+                        current_tab = get_active_chrome_tab()
+                        if current_tab:
+                            current_tab_index = current_tab.get("index")
+                    except Exception:
+                        # If state retrieval fails, fall back to showing all activities
+                        pass
+                    
                     activity_lines = []
                     for activity in activity_history:
                         action = activity.get("action", "")
@@ -759,11 +796,17 @@ class AIAgent:
                         if action == "switch_tab":
                             from_tab = details.get("from_tab")
                             to_tab = details.get("to_tab")
+                            # Skip if this activity switched TO the current tab (command-initiated)
+                            if to_tab == current_tab_index:
+                                continue
                             tab_info = details.get("tab_info", {})
                             title = tab_info.get("title", "")
                             activity_lines.append(f"  {age_str}: Switched from tab {from_tab} to tab {to_tab} ({title})")
                         elif action == "activate_app":
                             app_name = details.get("app_name", "")
+                            # Skip if this activity activated the current app (command-initiated)
+                            if app_name == current_app:
+                                continue
                             previous_app = details.get("previous_app")
                             if previous_app:
                                 activity_lines.append(f"  {age_str}: Activated {app_name} (was {previous_app})")
@@ -771,6 +814,9 @@ class AIAgent:
                                 activity_lines.append(f"  {age_str}: Activated {app_name}")
                         elif action == "place_app":
                             app_name = details.get("app_name", "")
+                            # Skip if this activity moved the current app (command-initiated)
+                            if app_name == current_app:
+                                continue
                             activity_lines.append(f"  {age_str}: Moved {app_name} window")
                         elif action == "close_tab":
                             closed_tabs = details.get("closed_tabs", [])
@@ -780,7 +826,7 @@ class AIAgent:
                             activity_lines.append(f"  {age_str}: Opened URL {url}")
                     
                     if activity_lines:
-                        context_parts.append("\nRecent activity history (most recent first):\n" + "\n".join(activity_lines))
+                        context_parts.append("\nRecent activity history (most recent first, excluding command-initiated actions):\n" + "\n".join(activity_lines))
         except Exception:
             pass
         
