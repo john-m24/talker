@@ -2,7 +2,7 @@
 
 import sys
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from .stt import transcribe_while_held
 from .stt.factory import set_cached_engine
 from .ai_agent import AIAgent
@@ -158,7 +158,8 @@ def process_command(
     command_executor: CommandExecutor,
     recent_files: Optional[list] = None,
     active_projects: Optional[list] = None,
-    current_project: Optional[dict] = None
+    current_project: Optional[dict] = None,
+    state_snapshotter: Optional[Any] = None
 ) -> bool:
     """
     Process a command from text input (voice or text mode).
@@ -175,6 +176,7 @@ def process_command(
         recent_files: List of recently opened files (optional)
         active_projects: List of active projects (optional)
         current_project: Current project dict (optional)
+        state_snapshotter: StateSnapshotter instance (optional)
         
     Returns:
         True if command was processed successfully, False otherwise
@@ -195,7 +197,8 @@ def process_command(
         chrome_tabs=chrome_tabs, chrome_tabs_raw=chrome_tabs_raw, 
         available_presets=available_presets,
         recent_files=recent_files, active_projects=active_projects, 
-        current_project=current_project
+        current_project=current_project,
+        state_snapshotter=state_snapshotter
     )
     
     # Handle clarification if needed
@@ -357,6 +360,21 @@ def main():
         try:
             state_snapshotter = StateSnapshotter()
             print("📸 State snapshotting enabled\n")
+            
+            # Start background thread to update snapshot periodically
+            import threading
+            def update_snapshot_periodically():
+                while True:
+                    try:
+                        time.sleep(STATE_SNAPSHOT_INTERVAL)
+                        if state_snapshotter:
+                            state_snapshotter.update_snapshot()
+                    except Exception as e:
+                        print(f"Warning: Failed to update state snapshot in background: {e}")
+                        time.sleep(STATE_SNAPSHOT_INTERVAL)
+            
+            snapshot_update_thread = threading.Thread(target=update_snapshot_periodically, daemon=True)
+            snapshot_update_thread.start()
         except Exception as e:
             print(f"Warning: Failed to initialize state snapshotter: {e}\n")
             state_snapshotter = None
@@ -364,73 +382,50 @@ def main():
     # Main loop - wait for hotkey, then process command
     print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
     
-    # Track last state snapshot update time
-    last_snapshot_update = 0
-    
     while True:
         try:
-            # Get current running apps for context (before waiting for hotkey)
-            running_apps = list_running_apps()
-            
-            # Get Chrome tabs with content if Chrome is running (for tab switching context)
-            chrome_tabs = None
-            chrome_tabs_raw = None
-            if running_apps and "Google Chrome" in running_apps:
-                chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
-            
-            # Get file context if enabled
-            recent_files = None
-            active_projects = None
-            current_project = None
-            if file_tracker:
-                try:
-                    recent_files = file_tracker.get_recent_files()
-                    active_projects = file_tracker.get_active_projects()
-                    current_project = file_tracker.get_current_project()
-                except Exception as e:
-                    print(f"Warning: Failed to fetch file context: {e}")
-            
-            # Update state snapshot periodically
-            if state_snapshotter:
-                current_time = time.time()
-                if current_time - last_snapshot_update >= STATE_SNAPSHOT_INTERVAL:
-                    try:
-                        state_snapshotter.update_snapshot()
-                        last_snapshot_update = current_time
-                    except Exception as e:
-                        print(f"Warning: Failed to update state snapshot: {e}")
-            
-            # Drain any queued commands submitted via local API (e.g., Electron)
-            try:
-                from .command_queue import drain_commands
-                queued_commands = drain_commands(max_items=10)
-                for text in queued_commands:
-                    should_continue = process_command(
-                        text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
-                        recent_files=recent_files, active_projects=active_projects,
-                        current_project=current_project
-                    )
-                    if not should_continue:
-                        print("Goodbye!")
-                        voice_hotkey_listener.stop()
-                        text_hotkey_listener.stop()
-                        if whisper_engine is not None:
-                            whisper_engine._stop_persistent_stream()
-                        break
-            except Exception as e:
-                print(f"Warning: Failed to process queued commands: {e}")
-
-            # Check for voice hotkey press
+            # Check for hotkeys FIRST - before any expensive operations
+            # This ensures minimal latency from hotkey press to response
             voice_pressed = voice_hotkey_listener.wait_for_hotkey(timeout=0.1)
-            
-            # Check for text hotkey press
             text_pressed = text_hotkey_listener.wait_for_hotkey(timeout=0.1)
             
+            # Handle text hotkey immediately - no context needed
+            if text_pressed:
+                # Text hotkey - trigger Electron palette immediately
+                try:
+                    trigger_palette()
+                    print("✅ Text hotkey pressed! Electron palette triggered.\n")
+                except Exception as e:
+                    print(f"Warning: Could not trigger Electron palette: {e}\n")
+                continue  # Skip context gathering and other operations
+            
+            # Handle voice hotkey - gather context only when needed
             if voice_pressed:
-                # Voice mode: record audio and transcribe
+                # Voice mode: gather context now (after hotkey detected)
                 print("✅ Voice hotkey pressed! Listening... (hold to speak, release to process)\n")
                 
-                # Build context for Whisper transcription (pre-built, no delay)
+                # Get current running apps for context
+                running_apps = list_running_apps()
+                
+                # Get Chrome tabs with content if Chrome is running
+                chrome_tabs = None
+                chrome_tabs_raw = None
+                if running_apps and "Google Chrome" in running_apps:
+                    chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
+                
+                # Get file context if enabled
+                recent_files = None
+                active_projects = None
+                current_project = None
+                if file_tracker:
+                    try:
+                        recent_files = file_tracker.get_recent_files()
+                        active_projects = file_tracker.get_active_projects()
+                        current_project = file_tracker.get_current_project()
+                    except Exception as e:
+                        print(f"Warning: Failed to fetch file context: {e}")
+                
+                # Build context for Whisper transcription
                 context_parts = [
                     "macOS window control commands.",
                     "Commands: bring to view, focus, list apps, switch tab, place on monitor, move to screen, activate preset.",
@@ -459,11 +454,12 @@ def main():
                     print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
                     continue
                 
-                # Process the command
+                # Process the command with gathered context
                 should_continue = process_command(
                     text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
                     recent_files=recent_files, active_projects=active_projects,
-                    current_project=current_project
+                    current_project=current_project,
+                    state_snapshotter=state_snapshotter
                 )
                 
                 if not should_continue:
@@ -478,15 +474,53 @@ def main():
                     break
                 
                 print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
-                
-            elif text_pressed:
-                # Text hotkey - trigger Electron palette
-                try:
-                    from .api_server import trigger_palette
-                    trigger_palette()
-                    print("✅ Text hotkey pressed! Electron palette triggered.\n")
-                except Exception as e:
-                    print(f"Warning: Could not trigger Electron palette: {e}\n")
+                continue  # Skip periodic maintenance on this iteration
+            
+            # No hotkey pressed - do periodic maintenance (only occasionally to avoid blocking)
+            # State snapshot is updated in background thread, no need to update here
+            
+            # Drain any queued commands submitted via local API (e.g., Electron)
+            # Gather context only when processing queued commands
+            try:
+                from .command_queue import drain_commands
+                queued_commands = drain_commands(max_items=10)
+                if queued_commands:
+                    # Gather context for queued commands
+                    running_apps = list_running_apps()
+                    chrome_tabs = None
+                    chrome_tabs_raw = None
+                    if running_apps and "Google Chrome" in running_apps:
+                        chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
+                    
+                    recent_files = None
+                    active_projects = None
+                    current_project = None
+                    if file_tracker:
+                        try:
+                            recent_files = file_tracker.get_recent_files()
+                            active_projects = file_tracker.get_active_projects()
+                            current_project = file_tracker.get_current_project()
+                        except Exception as e:
+                            print(f"Warning: Failed to fetch file context: {e}")
+                    
+                    for text in queued_commands:
+                        should_continue = process_command(
+                            text, agent, running_apps, installed_apps, chrome_tabs, chrome_tabs_raw, available_presets, command_executor,
+                            recent_files=recent_files, active_projects=active_projects,
+                            current_project=current_project,
+                            state_snapshotter=state_snapshotter
+                        )
+                        if not should_continue:
+                            print("Goodbye!")
+                            voice_hotkey_listener.stop()
+                            text_hotkey_listener.stop()
+                            if whisper_engine is not None:
+                                whisper_engine._stop_persistent_stream()
+                            if activity_monitor:
+                                activity_monitor.stop()
+                            break
+            except Exception as e:
+                print(f"Warning: Failed to process queued commands: {e}")
                 
         except KeyboardInterrupt:
             print("\n\nInterrupted. Goodbye!")

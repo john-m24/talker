@@ -3,7 +3,7 @@
 import json
 import hashlib
 import openai
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 from .config import LLM_ENDPOINT, LLM_MODEL, LLM_CACHE_ENABLED
 from .hardcoded_commands import get_hardcoded_command
 from .pattern_matcher import PatternMatcher
@@ -44,7 +44,8 @@ class AIAgent:
         available_presets: Optional[List[str]] = None,
         recent_files: Optional[List[Dict]] = None,
         active_projects: Optional[List[Dict]] = None,
-        current_project: Optional[Dict] = None
+        current_project: Optional[Dict] = None,
+        state_snapshotter: Optional[Any] = None
     ) -> Dict[str, Union[List[Dict], bool, Optional[str]]]:
         """
         Parse user command text into structured intents (supports single or multiple commands).
@@ -212,11 +213,14 @@ class AIAgent:
         
         # Include current state snapshot if available
         try:
-            from .monitoring import StateSnapshotter
             from .config import STATE_SNAPSHOT_ENABLED
             if STATE_SNAPSHOT_ENABLED:
-                state_snapshotter = StateSnapshotter()
-                state_snapshot = state_snapshotter.format_snapshot_for_llm()
+                # Use provided instance if available, otherwise create new one
+                snapshotter = state_snapshotter
+                if snapshotter is None:
+                    from .monitoring import StateSnapshotter
+                    snapshotter = StateSnapshotter()
+                state_snapshot = snapshotter.format_snapshot_for_llm()
                 if state_snapshot:
                     context_parts.append("\n" + state_snapshot)
         except Exception:
@@ -835,8 +839,9 @@ class AIAgent:
             from .monitoring import StateSnapshotter
             from .config import STATE_SNAPSHOT_ENABLED
             if STATE_SNAPSHOT_ENABLED:
-                state_snapshotter = StateSnapshotter()
-                state_snapshot = state_snapshotter.format_snapshot_for_llm()
+                # answer_query doesn't receive state_snapshotter parameter, create new instance
+                snapshotter = StateSnapshotter()
+                state_snapshot = snapshotter.format_snapshot_for_llm()
                 if state_snapshot:
                     context_parts.append("\n" + state_snapshot)
         except Exception:

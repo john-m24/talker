@@ -102,7 +102,7 @@ app.whenReady().then(() => {
 		req.on('timeout', () => {
 			req.destroy()
 		})
-	}, 100) // Poll every 100ms
+	}, 25) // Poll every 25ms for faster response
 
 	app.on('activate', function () {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow()
