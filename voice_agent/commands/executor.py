@@ -42,7 +42,6 @@ class CommandExecutor:
         
         Args:
             intent: Can be:
-                - A single intent dictionary (backward compatible)
                 - A list of intent dictionaries
                 - A dictionary with 'commands' array (from AI agent)
             running_apps: List of running applications (for commands that need it)
@@ -119,18 +118,15 @@ class CommandExecutor:
             return intent
         elif isinstance(intent, dict):
             if "commands" in intent:
-                # New format with commands array
+                # Format with commands array
                 commands = intent.get("commands", [])
                 if isinstance(commands, list):
                     return commands
                 else:
                     # Single command in commands field (shouldn't happen, but handle it)
                     return [commands] if commands else []
-            elif "type" in intent:
-                # Single intent dict (backward compatible)
-                return [intent]
             else:
-                # Invalid structure
+                # Invalid structure - must have commands array
                 return []
         else:
             # Invalid type

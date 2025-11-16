@@ -479,17 +479,11 @@ class AIAgent:
             try:
                 result = json.loads(content)
                 
-                # Normalize to new structure with 'commands' array
-                # Handle backward compatibility: if old format (has 'type' at top level), convert to new format
+                # Normalize to structure with 'commands' array
                 if "commands" in result:
-                    # New format with commands array
                     commands = result.get("commands", [])
                     if not isinstance(commands, list):
                         commands = [commands] if commands else []
-                elif "type" in result:
-                    # Old format - single command, convert to new format
-                    commands = [result]
-                    result = {"commands": commands}
                 else:
                     # Invalid structure, default to list_apps
                     commands = [{"type": "list_apps"}]

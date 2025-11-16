@@ -4,7 +4,6 @@ import json
 import os
 import time
 from typing import Any, Dict, List, Optional
-from pathlib import Path
 
 # Module-level singleton instance
 _instance: Optional['CacheManager'] = None
@@ -100,11 +99,9 @@ class CacheManager:
             "recent_queries": []
         }
         
-        # Load persistent data and migrate old cache/history if needed
+        # Load persistent data
         if self.enabled:
             self._load_persistent_data()
-            self._migrate_old_history()
-            self._migrate_old_cache()
     
     def get(self, namespace_path: str, key: str, default: Any = None) -> Any:
         """
@@ -357,54 +354,6 @@ class CacheManager:
         except IOError as e:
             print(f"Warning: Failed to save persistent data to {self.persistent_data_path}: {e}")
     
-    def _migrate_old_history(self) -> None:
-        """
-        Migrate old history file format to new persistent data storage.
-        This is a one-time migration that runs on first load.
-        """
-        # Check if migration already happened
-        if self._persistent_data.get("_history_migration_complete", False):
-            return
-        
-        # If we already have history in persistent_data, skip
-        if self._persistent_data.get("command_history"):
-            self._persistent_data["_history_migration_complete"] = True
-            self._save_persistent_data()
-            return
-        
-        # Try to load from old history file
-        if os.path.exists(self.history_path):
-            try:
-                with open(self.history_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        # Migrate to persistent_data
-                        self._persistent_data["command_history"] = data[:self.history_size]
-                        self._save_persistent_data()
-            except (json.JSONDecodeError, IOError):
-                # If migration fails, just mark as complete
-                pass
-        
-        self._persistent_data["_history_migration_complete"] = True
-        self._save_persistent_data()
-    
-    def _migrate_old_cache(self) -> None:
-        """
-        Migrate old flat cache format to new hierarchical namespace structure.
-        This is a one-time migration that runs on first load.
-        Note: Old cache was in-memory only, so this mainly marks migration as complete.
-        """
-        # Check if migration already happened by looking for a marker
-        if self._persistent_data.get("_cache_migration_complete", False):
-            return
-        
-        # Mark migration as complete
-        # Note: Old cache was in-memory only, so we can't migrate from disk
-        # Any existing cache will be rebuilt naturally as the system runs
-        self._persistent_data["_cache_migration_complete"] = True
-        self._save_persistent_data()
-
-
 __all__ = [
     'CacheManager',
     'get_cache_manager',

@@ -14,6 +14,3 @@ __all__ = [
     'reset_cache_manager',
 ]
 
-# For backward compatibility, import from cache module directly
-# This allows existing code to use: from voice_agent.cache import CacheManager
-

@@ -143,7 +143,7 @@ class Config:
 # Create a global config instance
 _config = Config()
 
-# Expose configuration values as module-level variables for backward compatibility
+# Expose configuration values as module-level variables
 LLM_ENDPOINT = _config.llm_endpoint
 LLM_MODEL = _config.llm_model
 STT_ENGINE = _config.stt_engine

@@ -158,18 +158,4 @@ def open_path_in_app(path: str, app_name: str) -> bool:
         return False
 
 
-def open_file_in_app(file_path: str, app_name: str) -> bool:
-    """
-    Open a file in a specific application.
-    
-    This is an alias for open_path_in_app() for backward compatibility.
-    
-    Args:
-        file_path: Path to the file to open
-        app_name: Name of the application to open the file in
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    return open_path_in_app(file_path, app_name)
 
