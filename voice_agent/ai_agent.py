@@ -145,6 +145,60 @@ class AIAgent:
         except Exception:
             pass
         
+        # Include activity history if available (for temporal references)
+        try:
+            if self.cache_manager and hasattr(self.cache_manager, "get_activity_history"):
+                activity_history = self.cache_manager.get_activity_history(max_count=20)  # type: ignore[attr-defined]
+                if activity_history:
+                    import time
+                    activity_lines = []
+                    for activity in activity_history:
+                        action = activity.get("action", "")
+                        details = activity.get("details", {})
+                        timestamp = activity.get("timestamp", 0)
+                        age_seconds = int(time.time() - timestamp) if timestamp else 0
+                        age_str = f"{age_seconds}s ago" if age_seconds < 60 else f"{age_seconds // 60}m ago"
+                        
+                        if action == "switch_tab":
+                            from_tab = details.get("from_tab")
+                            to_tab = details.get("to_tab")
+                            tab_info = details.get("tab_info", {})
+                            title = tab_info.get("title", "")
+                            activity_lines.append(f"  {age_str}: Switched from tab {from_tab} to tab {to_tab} ({title})")
+                        elif action == "activate_app":
+                            app_name = details.get("app_name", "")
+                            previous_app = details.get("previous_app")
+                            if previous_app:
+                                activity_lines.append(f"  {age_str}: Activated {app_name} (was {previous_app})")
+                            else:
+                                activity_lines.append(f"  {age_str}: Activated {app_name}")
+                        elif action == "place_app":
+                            app_name = details.get("app_name", "")
+                            activity_lines.append(f"  {age_str}: Moved {app_name} window")
+                        elif action == "close_tab":
+                            closed_tabs = details.get("closed_tabs", [])
+                            activity_lines.append(f"  {age_str}: Closed tab(s) {closed_tabs}")
+                        elif action == "open_url":
+                            url = details.get("url", "")
+                            activity_lines.append(f"  {age_str}: Opened URL {url}")
+                    
+                    if activity_lines:
+                        context_parts.append("\nRecent activity history (most recent first):\n" + "\n".join(activity_lines))
+        except Exception:
+            pass
+        
+        # Include current state snapshot if available
+        try:
+            from .monitoring import StateSnapshotter
+            from .config import STATE_SNAPSHOT_ENABLED
+            if STATE_SNAPSHOT_ENABLED:
+                state_snapshotter = StateSnapshotter()
+                state_snapshot = state_snapshotter.format_snapshot_for_llm()
+                if state_snapshot:
+                    context_parts.append("\n" + state_snapshot)
+        except Exception:
+            pass
+        
         # Add file context if available
         if recent_files:
             # Prioritize code files in context
@@ -686,6 +740,61 @@ class AIAgent:
                     qa_lines.append(f"Q: {q}\nA: {a}")
             if qa_lines:
                 context_parts.append("\nRecent query responses (most recent first):\n" + "\n\n".join(qa_lines))
+        
+        # Include activity history if available (for temporal queries)
+        try:
+            cache_manager = get_cache_manager()
+            if cache_manager and hasattr(cache_manager, "get_activity_history"):
+                activity_history = cache_manager.get_activity_history(max_count=20)  # type: ignore[attr-defined]
+                if activity_history:
+                    import time
+                    activity_lines = []
+                    for activity in activity_history:
+                        action = activity.get("action", "")
+                        details = activity.get("details", {})
+                        timestamp = activity.get("timestamp", 0)
+                        age_seconds = int(time.time() - timestamp) if timestamp else 0
+                        age_str = f"{age_seconds}s ago" if age_seconds < 60 else f"{age_seconds // 60}m ago"
+                        
+                        if action == "switch_tab":
+                            from_tab = details.get("from_tab")
+                            to_tab = details.get("to_tab")
+                            tab_info = details.get("tab_info", {})
+                            title = tab_info.get("title", "")
+                            activity_lines.append(f"  {age_str}: Switched from tab {from_tab} to tab {to_tab} ({title})")
+                        elif action == "activate_app":
+                            app_name = details.get("app_name", "")
+                            previous_app = details.get("previous_app")
+                            if previous_app:
+                                activity_lines.append(f"  {age_str}: Activated {app_name} (was {previous_app})")
+                            else:
+                                activity_lines.append(f"  {age_str}: Activated {app_name}")
+                        elif action == "place_app":
+                            app_name = details.get("app_name", "")
+                            activity_lines.append(f"  {age_str}: Moved {app_name} window")
+                        elif action == "close_tab":
+                            closed_tabs = details.get("closed_tabs", [])
+                            activity_lines.append(f"  {age_str}: Closed tab(s) {closed_tabs}")
+                        elif action == "open_url":
+                            url = details.get("url", "")
+                            activity_lines.append(f"  {age_str}: Opened URL {url}")
+                    
+                    if activity_lines:
+                        context_parts.append("\nRecent activity history (most recent first):\n" + "\n".join(activity_lines))
+        except Exception:
+            pass
+        
+        # Include current state snapshot if available
+        try:
+            from .monitoring import StateSnapshotter
+            from .config import STATE_SNAPSHOT_ENABLED
+            if STATE_SNAPSHOT_ENABLED:
+                state_snapshotter = StateSnapshotter()
+                state_snapshot = state_snapshotter.format_snapshot_for_llm()
+                if state_snapshot:
+                    context_parts.append("\n" + state_snapshot)
+        except Exception:
+            pass
         
         context_parts.extend([
             "",

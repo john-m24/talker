@@ -1,108 +1,13 @@
 """Window control functions using AppleScript."""
 
-import os
-from typing import List, Optional, Tuple
-from .config import MONITORS, CACHE_APPS_TTL
+from typing import List, Optional
+from .config import MONITORS
 from .utils import AppleScriptExecutor, escape_applescript_string
-from .cache import get_cache_manager
+from .monitoring.app_monitor import list_running_apps, list_installed_apps
+from .monitoring.window_monitor import get_window_bounds
 
-
-def list_running_apps() -> List[str]:
-    """
-    Get a list of currently running, non-background applications.
-    Uses cache if enabled.
-    
-    Returns:
-        List of application names (strings)
-    """
-    # Check cache first
-    cache_manager = get_cache_manager()
-    if cache_manager:
-        cached = cache_manager.get_apps("running")
-        if cached is not None:
-            return cached
-    
-    # Cache miss - fetch from system
-    try:
-        # Use linefeed delimiter to avoid issues with commas in app names
-        script = '''
-        tell application "System Events"
-            set appList to ""
-            set processList to every process whose background only is false
-            repeat with proc in processList
-                if appList is not "" then
-                    set appList to appList & linefeed
-                end if
-                set appList to appList & name of proc
-            end repeat
-            return appList
-        end tell
-        '''
-        success, stdout, stderr = _executor.execute(script, check=True)
-        
-        if not success:
-            print(f"Error listing running apps: {stderr}")
-            return []
-        
-        # Parse the newline-separated list
-        apps = [app.strip() for app in stdout.strip().split('\n') if app.strip()] if stdout else []
-        
-        # Cache the result
-        if cache_manager:
-            cache_manager.set_apps("running", apps, ttl=CACHE_APPS_TTL)
-        
-        return apps
-    except Exception as e:
-        print(f"Unexpected error listing apps: {e}")
-        return []
-
-
-def list_installed_apps() -> List[str]:
-    """
-    Get a list of installed applications from common macOS locations.
-    Uses cache if enabled.
-    
-    Returns:
-        List of application names (without .app extension)
-    """
-    # Check cache first
-    cache_manager = get_cache_manager()
-    if cache_manager:
-        cached = cache_manager.get_apps("installed")
-        if cached is not None:
-            return cached
-    
-    # Cache miss - fetch from filesystem across multiple locations
-    apps_set = set()
-    candidate_dirs = [
-        "/Applications",
-        "/Applications/Utilities",
-        "/System/Applications",
-        "/System/Applications/Utilities",
-        "/System/Library/CoreServices",  # Finder.app and other system apps
-        os.path.expanduser("~/Applications"),
-    ]
-    
-    try:
-        for base in candidate_dirs:
-            if not os.path.exists(base):
-                continue
-            for item in os.listdir(base):
-                if item.endswith(".app"):
-                    # Remove .app extension
-                    app_name = item[:-4]
-                    apps_set.add(app_name)
-        
-        apps = sorted(apps_set)
-        
-        # Cache the result (longer TTL for installed apps)
-        if cache_manager:
-            cache_manager.set_apps("installed", apps, ttl=CACHE_APPS_TTL * 3)  # 3x TTL for installed apps
-        
-        return apps
-    except Exception as e:
-        print(f"Error listing installed apps: {e}")
-        return []
+# Re-export monitoring functions for backward compatibility
+__all__ = ['list_running_apps', 'list_installed_apps', 'get_window_bounds', 'activate_app', 'close_app', 'set_window_bounds', 'place_app_on_monitor', 'show_apps_list']
 
 
 # Create a module-level executor instance
@@ -237,56 +142,7 @@ def close_app(app_name: str) -> bool:
         return False
 
 
-def get_window_bounds(app_name: str) -> Optional[tuple[int, int, int, int]]:
-    """
-    Get the current bounds of an application's front window.
-    
-    Args:
-        app_name: Name of the application
-        
-    Returns:
-        Tuple of (left, top, right, bottom) or None on failure
-    """
-    try:
-        get_size_script = f'''
-        tell application "{app_name}"
-            activate
-            try
-                set currentBounds to bounds of front window
-                return currentBounds
-            on error
-                -- Fallback: try using System Events
-                try
-                    tell application "System Events"
-                        tell process "{app_name}"
-                            set winPos to position of window 1
-                            set winSize to size of window 1
-                            set x1 to item 1 of winPos
-                            set y1 to item 2 of winPos
-                            set w1 to item 1 of winSize
-                            set h1 to item 2 of winSize
-                            return {{x1, y1, x1 + w1, y1 + h1}}
-                        end tell
-                    end tell
-                on error
-                    return {{0, 0, 800, 600}}
-                end try
-            end try
-        end tell
-        '''
-        
-        success, stdout, stderr = _executor.execute(get_size_script, check=True)
-        if not success or not stdout:
-            return None
-        
-        # Parse bounds: {left, top, right, bottom}
-        bounds_str = stdout.replace("{", "").replace("}", "")
-        bounds_parts = [int(p.strip()) for p in bounds_str.split(",")]
-        if len(bounds_parts) == 4:
-            return tuple(bounds_parts)
-        return None
-    except Exception:
-        return None
+# get_window_bounds is now imported from monitoring.window_monitor
 
 
 def set_window_bounds(app_name: str, left: int, top: int, right: int, bottom: int) -> bool:

@@ -6,15 +6,17 @@ from typing import Optional, Tuple
 from .stt import transcribe_while_held
 from .stt.factory import set_cached_engine
 from .ai_agent import AIAgent
-from .window_control import list_running_apps, list_installed_apps
-from .tab_control import list_chrome_tabs_with_content
+from .monitoring import list_running_apps, list_chrome_tabs_with_content
+from .window_control import list_installed_apps
+from .monitoring import ActivityMonitor, StateSnapshotter
 from .api_server import send_request, wait_for_response, trigger_palette
 from .commands import CommandExecutor
 from .config import (
     LLM_ENDPOINT, STT_ENGINE, HOTKEY, TEXT_HOTKEY, WHISPER_MODEL,
     CACHE_ENABLED, CACHE_HISTORY_SIZE, CACHE_HISTORY_PATH,
     AUTOCOMPLETE_ENABLED, AUTOCOMPLETE_MAX_SUGGESTIONS, LLM_CACHE_ENABLED,
-    FILE_CONTEXT_ENABLED
+    FILE_CONTEXT_ENABLED, SYSTEM_MONITOR_ENABLED, STATE_SNAPSHOT_ENABLED,
+    STATE_SNAPSHOT_INTERVAL
 )
 from .cache import initialize_cache_manager, get_cache_manager
 from .hotkey import HotkeyListener
@@ -338,8 +340,32 @@ def main():
             print(f"Warning: Failed to initialize file context tracker: {e}\n")
             file_tracker = None
     
+    # Initialize activity monitor if enabled
+    activity_monitor = None
+    if SYSTEM_MONITOR_ENABLED:
+        try:
+            activity_monitor = ActivityMonitor()
+            activity_monitor.start()
+            print("🔍 System activity monitoring enabled\n")
+        except Exception as e:
+            print(f"Warning: Failed to initialize activity monitor: {e}\n")
+            activity_monitor = None
+    
+    # Initialize state snapshotter if enabled
+    state_snapshotter = None
+    if STATE_SNAPSHOT_ENABLED:
+        try:
+            state_snapshotter = StateSnapshotter()
+            print("📸 State snapshotting enabled\n")
+        except Exception as e:
+            print(f"Warning: Failed to initialize state snapshotter: {e}\n")
+            state_snapshotter = None
+    
     # Main loop - wait for hotkey, then process command
     print(f"👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
+    
+    # Track last state snapshot update time
+    last_snapshot_update = 0
     
     while True:
         try:
@@ -363,6 +389,16 @@ def main():
                     current_project = file_tracker.get_current_project()
                 except Exception as e:
                     print(f"Warning: Failed to fetch file context: {e}")
+            
+            # Update state snapshot periodically
+            if state_snapshotter:
+                current_time = time.time()
+                if current_time - last_snapshot_update >= STATE_SNAPSHOT_INTERVAL:
+                    try:
+                        state_snapshotter.update_snapshot()
+                        last_snapshot_update = current_time
+                    except Exception as e:
+                        print(f"Warning: Failed to update state snapshot: {e}")
             
             # Drain any queued commands submitted via local API (e.g., Electron)
             try:
@@ -437,6 +473,8 @@ def main():
                     text_hotkey_listener.stop()
                     if whisper_engine is not None:
                         whisper_engine._stop_persistent_stream()
+                    if activity_monitor:
+                        activity_monitor.stop()
                     break
                 
                 print(f"\n👂 Waiting for hotkeys ({HOTKEY} for voice, {TEXT_HOTKEY} for text)...\n")
@@ -456,6 +494,8 @@ def main():
             text_hotkey_listener.stop()
             if whisper_engine is not None:
                 whisper_engine._stop_persistent_stream()
+            if activity_monitor:
+                activity_monitor.stop()
             break
         except Exception as e:
             print(f"Error: {e}\n")

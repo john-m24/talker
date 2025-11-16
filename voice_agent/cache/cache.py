@@ -93,10 +93,11 @@ class CacheManager:
         # Example: {"apps": {"running": {...}}, "browsers.chrome": {"tabs": {...}}}
         self._cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
         
-        # Persistent data (saved to disk): command history, recent queries, etc.
+        # Persistent data (saved to disk): command history, recent queries, activity history, etc.
         self._persistent_data: Dict[str, Any] = {
             "command_history": [],
-            "recent_queries": []
+            "recent_queries": [],
+            "activity_history": []
         }
         
         # Load persistent data
@@ -326,6 +327,65 @@ class CacheManager:
         """Clear command history."""
         if "command_history" in self._persistent_data:
             self._persistent_data["command_history"] = []
+        self._save_persistent_data()
+    
+    def add_activity(self, action: str, details: Dict[str, Any], activity_history_size: int = 100) -> None:
+        """
+        Add an activity to the activity history.
+        
+        Args:
+            action: Action type (e.g., "switch_tab", "activate_app", "place_app")
+            details: Dict with action details
+            activity_history_size: Maximum size of activity history
+        """
+        if not self.enabled:
+            return
+        
+        try:
+            activity_history = self._persistent_data.get("activity_history", []) or []
+            if not isinstance(activity_history, list):
+                activity_history = []
+            
+            # Prepend new activity (most recent first)
+            activity = {
+                "action": action,
+                "details": details,
+                "timestamp": time.time()
+            }
+            activity_history.insert(0, activity)
+            
+            # Trim to max size
+            if len(activity_history) > activity_history_size:
+                activity_history = activity_history[:activity_history_size]
+            
+            self._persistent_data["activity_history"] = activity_history
+            self._save_persistent_data()
+        except Exception:
+            # Fail silently; activity tracking is best-effort
+            pass
+    
+    def get_activity_history(self, max_count: int = 50) -> List[Dict]:
+        """
+        Get recent activity history.
+        
+        Args:
+            max_count: Maximum number of activities to return
+            
+        Returns:
+            List of activity dicts (most recent first)
+        """
+        if not self.enabled:
+            return []
+        
+        activity_history = self._persistent_data.get("activity_history", []) or []
+        if not isinstance(activity_history, list):
+            return []
+        return activity_history[:max_count]
+    
+    def clear_activity_history(self) -> None:
+        """Clear activity history."""
+        if "activity_history" in self._persistent_data:
+            self._persistent_data["activity_history"] = []
         self._save_persistent_data()
     
     def _load_persistent_data(self) -> None:

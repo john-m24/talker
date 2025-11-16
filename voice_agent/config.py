@@ -86,6 +86,22 @@ class Config:
         self.max_recent_files = int(os.getenv("VOICE_AGENT_MAX_RECENT_FILES", "20"))
         self.max_project_depth = int(os.getenv("VOICE_AGENT_MAX_PROJECT_DEPTH", "3"))
         
+        # Activity history configuration
+        self.cache_activity_history_size = int(os.getenv("VOICE_AGENT_CACHE_ACTIVITY_HISTORY_SIZE", "100"))
+        
+        # System monitoring configuration
+        self.system_monitor_enabled = os.getenv("VOICE_AGENT_SYSTEM_MONITOR_ENABLED", "true").lower() == "true"
+        self.system_monitor_app_interval = float(os.getenv("VOICE_AGENT_SYSTEM_MONITOR_APP_INTERVAL", "1.0"))
+        self.system_monitor_tab_interval = float(os.getenv("VOICE_AGENT_SYSTEM_MONITOR_TAB_INTERVAL", "2.0"))
+        self.system_monitor_window_interval = float(os.getenv("VOICE_AGENT_SYSTEM_MONITOR_WINDOW_INTERVAL", "3.0"))
+        self.system_monitor_window_threshold = int(os.getenv("VOICE_AGENT_SYSTEM_MONITOR_WINDOW_THRESHOLD", "50"))
+        
+        # State snapshot configuration
+        self.state_snapshot_enabled = os.getenv("VOICE_AGENT_STATE_SNAPSHOT_ENABLED", "true").lower() == "true"
+        self.state_snapshot_interval = float(os.getenv("VOICE_AGENT_STATE_SNAPSHOT_INTERVAL", "5.0"))
+        self.state_snapshot_include_documents = os.getenv("VOICE_AGENT_STATE_SNAPSHOT_INCLUDE_DOCUMENTS", "true").lower() == "true"
+        self.state_snapshot_include_all_tabs = os.getenv("VOICE_AGENT_STATE_SNAPSHOT_INCLUDE_ALL_TABS", "true").lower() == "true"
+        
         # Monitor coordinates for multi-monitor window placement
         # Format: {monitor_name: {"x": left_edge, "y": top_edge, "w": width, "h": height}}
         # Coordinates are absolute screen coordinates
@@ -166,6 +182,16 @@ CACHE_FILES_TTL = _config.cache_files_ttl
 FILE_CONTEXT_ENABLED = _config.file_context_enabled
 MAX_RECENT_FILES = _config.max_recent_files
 MAX_PROJECT_DEPTH = _config.max_project_depth
+CACHE_ACTIVITY_HISTORY_SIZE = _config.cache_activity_history_size
+SYSTEM_MONITOR_ENABLED = _config.system_monitor_enabled
+SYSTEM_MONITOR_APP_INTERVAL = _config.system_monitor_app_interval
+SYSTEM_MONITOR_TAB_INTERVAL = _config.system_monitor_tab_interval
+SYSTEM_MONITOR_WINDOW_INTERVAL = _config.system_monitor_window_interval
+SYSTEM_MONITOR_WINDOW_THRESHOLD = _config.system_monitor_window_threshold
+STATE_SNAPSHOT_ENABLED = _config.state_snapshot_enabled
+STATE_SNAPSHOT_INTERVAL = _config.state_snapshot_interval
+STATE_SNAPSHOT_INCLUDE_DOCUMENTS = _config.state_snapshot_include_documents
+STATE_SNAPSHOT_INCLUDE_ALL_TABS = _config.state_snapshot_include_all_tabs
 
 __all__ = [
     "Config",
@@ -191,4 +217,14 @@ __all__ = [
     "FILE_CONTEXT_ENABLED",
     "MAX_RECENT_FILES",
     "MAX_PROJECT_DEPTH",
+    "CACHE_ACTIVITY_HISTORY_SIZE",
+    "SYSTEM_MONITOR_ENABLED",
+    "SYSTEM_MONITOR_APP_INTERVAL",
+    "SYSTEM_MONITOR_TAB_INTERVAL",
+    "SYSTEM_MONITOR_WINDOW_INTERVAL",
+    "SYSTEM_MONITOR_WINDOW_THRESHOLD",
+    "STATE_SNAPSHOT_ENABLED",
+    "STATE_SNAPSHOT_INTERVAL",
+    "STATE_SNAPSHOT_INCLUDE_DOCUMENTS",
+    "STATE_SNAPSHOT_INCLUDE_ALL_TABS",
 ]
