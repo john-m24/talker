@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Union, Tuple
 from urllib.parse import urlparse
 from .utils import AppleScriptExecutor, escape_applescript_string
 from .config import CACHE_TABS_TTL
-from .cache import get_cache_manager, CacheKeys
+from .cache import get_cache_manager
 
 # Create a module-level executor instance
 _executor = AppleScriptExecutor()
@@ -290,8 +290,8 @@ def list_chrome_tabs_with_content() -> Tuple[List[Dict[str, Union[str, int, bool
     # Check cache first
     cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get(CacheKeys.CHROME_TABS)
-        cached_raw = cache_manager.get(CacheKeys.CHROME_TABS_RAW)
+        cached = cache_manager.get_tabs("tabs")
+        cached_raw = cache_manager.get_tabs("tabs_raw")
         if cached is not None and cached_raw is not None:
             return cached, cached_raw
     
@@ -334,9 +334,9 @@ def list_chrome_tabs_with_content() -> Tuple[List[Dict[str, Union[str, int, bool
     
     # Cache the result
     if cache_manager:
-        cache_manager.set(CacheKeys.CHROME_TABS, tabs, ttl=CACHE_TABS_TTL)
+        cache_manager.set_tabs("tabs", tabs, ttl=CACHE_TABS_TTL)
         if raw_output:
-            cache_manager.set(CacheKeys.CHROME_TABS_RAW, raw_output, ttl=CACHE_TABS_TTL)
+            cache_manager.set_tabs("tabs_raw", raw_output, ttl=CACHE_TABS_TTL)
     
     return tabs, raw_output
 

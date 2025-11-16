@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-from .cache import get_cache_manager, CacheKeys
+from .cache import get_cache_manager
 from .config import CACHE_FILES_TTL
 from .fuzzy_matcher import match_app_name
 
@@ -36,7 +36,7 @@ class FileContextTracker:
         """
         # Check cache first
         if self.cache_manager:
-            cached = self.cache_manager.get(CacheKeys.RECENT_FILES)
+            cached = self.cache_manager.get_files("recent")
             if cached is not None:
                 # Filter by age
                 cutoff = time.time() - (max_age_hours * 3600)
@@ -48,8 +48,8 @@ class FileContextTracker:
         
         # Cache results
         if self.cache_manager:
-            self.cache_manager.set(
-                CacheKeys.RECENT_FILES,
+            self.cache_manager.set_files(
+                "recent",
                 files,
                 ttl=CACHE_FILES_TTL
             )
@@ -216,7 +216,7 @@ class FileContextTracker:
         """
         # Check cache first
         if self.cache_manager:
-            cached = self.cache_manager.get(CacheKeys.ACTIVE_PROJECTS)
+            cached = self.cache_manager.get_files("projects")
             if cached is not None:
                 return cached
         
@@ -249,8 +249,8 @@ class FileContextTracker:
         
         # Cache results
         if self.cache_manager:
-            self.cache_manager.set(
-                CacheKeys.ACTIVE_PROJECTS,
+            self.cache_manager.set_files(
+                "projects",
                 projects,
                 ttl=CACHE_FILES_TTL
             )
@@ -335,7 +335,7 @@ class FileContextTracker:
         """
         # Check cache first
         if self.cache_manager:
-            cached = self.cache_manager.get(CacheKeys.CURRENT_PROJECT)
+            cached = self.cache_manager.get_files("current_project")
             if cached is not None:
                 return cached
         
@@ -347,8 +347,8 @@ class FileContextTracker:
             if project:
                 # Cache result
                 if self.cache_manager:
-                    self.cache_manager.set(
-                        CacheKeys.CURRENT_PROJECT,
+                    self.cache_manager.set_files(
+                        "current_project",
                         project,
                         ttl=CACHE_FILES_TTL
                     )
@@ -360,8 +360,8 @@ class FileContextTracker:
             current = active_projects[0]
             # Cache result
             if self.cache_manager:
-                self.cache_manager.set(
-                    CacheKeys.CURRENT_PROJECT,
+                self.cache_manager.set_files(
+                    "current_project",
                     current,
                     ttl=CACHE_FILES_TTL
                 )

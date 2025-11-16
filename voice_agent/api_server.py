@@ -34,10 +34,10 @@ def _build_context(cache_manager) -> Dict[str, Any]:
 			'command_history': []
 		}
 	return {
-		'running_apps': cache_manager.get('running_apps', []),
-		'installed_apps': cache_manager.get('installed_apps', []),
-		'chrome_tabs': cache_manager.get('chrome_tabs', []),
-		'presets': list(cache_manager.get('presets', {}).keys()) if isinstance(cache_manager.get('presets', {}), dict) else [],
+		'running_apps': cache_manager.get_apps('running') or [],
+		'installed_apps': cache_manager.get_apps('installed') or [],
+		'chrome_tabs': cache_manager.get_tabs('tabs') or [],
+		'presets': list(cache_manager.get_system('presets').keys()) if isinstance(cache_manager.get_system('presets'), dict) else [],
 		'command_history': cache_manager.get_history(),
 	}
 

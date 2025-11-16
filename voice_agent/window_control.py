@@ -4,7 +4,7 @@ import os
 from typing import List, Optional, Tuple
 from .config import MONITORS, CACHE_APPS_TTL
 from .utils import AppleScriptExecutor, escape_applescript_string
-from .cache import get_cache_manager, CacheKeys
+from .cache import get_cache_manager
 
 
 def list_running_apps() -> List[str]:
@@ -18,7 +18,7 @@ def list_running_apps() -> List[str]:
     # Check cache first
     cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get(CacheKeys.RUNNING_APPS)
+        cached = cache_manager.get_apps("running")
         if cached is not None:
             return cached
     
@@ -49,7 +49,7 @@ def list_running_apps() -> List[str]:
         
         # Cache the result
         if cache_manager:
-            cache_manager.set(CacheKeys.RUNNING_APPS, apps, ttl=CACHE_APPS_TTL)
+            cache_manager.set_apps("running", apps, ttl=CACHE_APPS_TTL)
         
         return apps
     except Exception as e:
@@ -68,7 +68,7 @@ def list_installed_apps() -> List[str]:
     # Check cache first
     cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get(CacheKeys.INSTALLED_APPS)
+        cached = cache_manager.get_apps("installed")
         if cached is not None:
             return cached
     
@@ -97,7 +97,7 @@ def list_installed_apps() -> List[str]:
         
         # Cache the result (longer TTL for installed apps)
         if cache_manager:
-            cache_manager.set(CacheKeys.INSTALLED_APPS, apps, ttl=CACHE_APPS_TTL * 3)  # 3x TTL for installed apps
+            cache_manager.set_apps("installed", apps, ttl=CACHE_APPS_TTL * 3)  # 3x TTL for installed apps
         
         return apps
     except Exception as e:

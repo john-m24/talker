@@ -18,10 +18,10 @@ class ListAppsCommand(Command):
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list apps command."""
         # Force fresh data by invalidating cache before getting running_apps
-        from ..cache import get_cache_manager, CacheKeys
+        from ..cache import get_cache_manager
         cache_manager = get_cache_manager()
         if cache_manager:
-            cache_manager.invalidate(CacheKeys.RUNNING_APPS)
+            cache_manager.invalidate("apps", "running")
         
         # Now get fresh running_apps data
         from ..window_control import list_running_apps

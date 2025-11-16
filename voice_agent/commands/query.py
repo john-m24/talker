@@ -50,11 +50,11 @@ class QueryCommand(Command):
         command_history: List[str] = []
         recent_queries: List[Dict[str, Any]] = []
         try:
-            from ..cache import get_cache_manager, CacheKeys
+            from ..cache import get_cache_manager
             cache_manager = get_cache_manager()
             if cache_manager:
-                installed_apps = cache_manager.get(CacheKeys.INSTALLED_APPS, []) or []
-                presets_dict = cache_manager.get(CacheKeys.PRESETS, {}) or {}
+                installed_apps = cache_manager.get_apps("installed") or []
+                presets_dict = cache_manager.get_system("presets") or {}
                 if isinstance(presets_dict, dict):
                     available_presets = list(presets_dict.keys())
                 command_history = cache_manager.get_history()

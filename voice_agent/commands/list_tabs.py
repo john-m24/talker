@@ -18,11 +18,11 @@ class ListTabsCommand(Command):
     def execute(self, intent: Dict[str, Any]) -> bool:
         """Execute the list tabs command."""
         # Force fresh data by invalidating cache before getting chrome_tabs
-        from ..cache import get_cache_manager, CacheKeys
+        from ..cache import get_cache_manager
         cache_manager = get_cache_manager()
         if cache_manager:
-            cache_manager.invalidate(CacheKeys.CHROME_TABS)
-            cache_manager.invalidate(CacheKeys.CHROME_TABS_RAW)
+            cache_manager.invalidate("browsers.chrome", "tabs")
+            cache_manager.invalidate("browsers.chrome", "tabs_raw")
         
         # Now get fresh chrome_tabs data
         from ..tab_control import list_chrome_tabs_with_content

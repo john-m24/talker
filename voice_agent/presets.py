@@ -5,7 +5,7 @@ import json
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from .config import CACHE_PRESETS_TTL
-from .cache import get_cache_manager, CacheKeys
+from .cache import get_cache_manager
 
 
 def _get_presets_file_path() -> str:
@@ -49,7 +49,7 @@ def load_presets() -> Dict[str, Any]:
     # Check cache first
     cache_manager = get_cache_manager()
     if cache_manager:
-        cached = cache_manager.get(CacheKeys.PRESETS)
+        cached = cache_manager.get_system("presets")
         if cached is not None:
             return cached
     
@@ -74,7 +74,7 @@ def load_presets() -> Dict[str, Any]:
         
         # Cache the result
         if cache_manager:
-            cache_manager.set(CacheKeys.PRESETS, valid_presets, ttl=CACHE_PRESETS_TTL)
+            cache_manager.set_system("presets", valid_presets, ttl=CACHE_PRESETS_TTL)
         
         return valid_presets
     except json.JSONDecodeError as e:

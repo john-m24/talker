@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Union
 from .config import LLM_ENDPOINT, LLM_MODEL, LLM_CACHE_ENABLED
 from .hardcoded_commands import get_hardcoded_command
 from .pattern_matcher import PatternMatcher
-from .cache import CacheKeys, get_cache_manager
+from .cache import get_cache_manager
 
 
 class AIAgent:
@@ -92,13 +92,12 @@ class AIAgent:
         
         # Tier 3: Fall back to LLM with text-only cache (slow, ~500-2000ms, only when needed)
         # Generate text-only cache key (normalized text hash)
-        cache_key = None
+        text_hash = None
         if LLM_CACHE_ENABLED and self.cache_manager:
             text_hash = hashlib.md5(normalized_text.encode()).hexdigest()
-            cache_key = CacheKeys.llm_response(text_hash)
             
-            # Check text-only cache first
-            cached_result = self.cache_manager.get(cache_key)
+            # Check text-only cache first using llm.responses namespace
+            cached_result = self.cache_manager.get_llm(text_hash)
             if cached_result is not None:
                 # Validate context after cache hit
                 validated_result = self._validate_context(
@@ -510,9 +509,9 @@ class AIAgent:
                 result["commands"] = commands
                 
                 # Cache the result with text-only key (if caching is enabled)
-                if cache_key and self.cache_manager:
+                if text_hash and self.cache_manager:
                     # Cache with no TTL (text-only key means context changes don't invalidate)
-                    self.cache_manager.set(cache_key, result, ttl=0)
+                    self.cache_manager.set_llm(text_hash, result, ttl=0)
                 
                 return result
             except json.JSONDecodeError as e:
