@@ -3,6 +3,7 @@
 import sys
 import time
 from typing import Optional, Tuple, Any
+from concurrent.futures import ThreadPoolExecutor
 from .stt import transcribe_while_held
 from .stt.factory import set_cached_engine
 from .ai_agent import AIAgent
@@ -145,6 +146,69 @@ def handle_clarification(
         print("   Text confirmed, proceeding with command.\n")
     
     return text, intent
+
+
+def gather_context_parallel(file_tracker=None):
+    """
+    Gather context in parallel for faster execution.
+    
+    Args:
+        file_tracker: Optional FileContextTracker instance
+        
+    Returns:
+        Tuple of (running_apps, chrome_tabs, chrome_tabs_raw, recent_files, active_projects, current_project)
+        Any failed operation returns None for that value.
+    """
+    running_apps = None
+    chrome_tabs = None
+    chrome_tabs_raw = None
+    recent_files = None
+    active_projects = None
+    current_project = None
+    
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        # Submit all operations in parallel
+        futures = {
+            'running_apps': executor.submit(list_running_apps),
+            'chrome_tabs': executor.submit(list_chrome_tabs_with_content),
+        }
+        
+        # Submit file context operations if tracker exists
+        if file_tracker:
+            futures['recent_files'] = executor.submit(file_tracker.get_recent_files)
+            futures['active_projects'] = executor.submit(file_tracker.get_active_projects)
+            futures['current_project'] = executor.submit(file_tracker.get_current_project)
+        
+        # Collect results with error handling
+        try:
+            running_apps = futures['running_apps'].result()
+        except Exception as e:
+            print(f"Warning: Failed to fetch running apps: {e}")
+        
+        try:
+            chrome_tabs, chrome_tabs_raw = futures['chrome_tabs'].result()
+        except Exception as e:
+            print(f"Warning: Failed to fetch Chrome tabs: {e}")
+            chrome_tabs = None
+            chrome_tabs_raw = None
+        
+        if file_tracker:
+            try:
+                recent_files = futures['recent_files'].result()
+            except Exception as e:
+                print(f"Warning: Failed to fetch recent files: {e}")
+            
+            try:
+                active_projects = futures['active_projects'].result()
+            except Exception as e:
+                print(f"Warning: Failed to fetch active projects: {e}")
+            
+            try:
+                current_project = futures['current_project'].result()
+            except Exception as e:
+                print(f"Warning: Failed to fetch current project: {e}")
+    
+    return running_apps, chrome_tabs, chrome_tabs_raw, recent_files, active_projects, current_project
 
 
 def process_command(
@@ -404,26 +468,8 @@ def main():
                 # Voice mode: gather context now (after hotkey detected)
                 print("✅ Voice hotkey pressed! Listening... (hold to speak, release to process)\n")
                 
-                # Get current running apps for context
-                running_apps = list_running_apps()
-                
-                # Get Chrome tabs with content if Chrome is running
-                chrome_tabs = None
-                chrome_tabs_raw = None
-                if running_apps and "Google Chrome" in running_apps:
-                    chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
-                
-                # Get file context if enabled
-                recent_files = None
-                active_projects = None
-                current_project = None
-                if file_tracker:
-                    try:
-                        recent_files = file_tracker.get_recent_files()
-                        active_projects = file_tracker.get_active_projects()
-                        current_project = file_tracker.get_current_project()
-                    except Exception as e:
-                        print(f"Warning: Failed to fetch file context: {e}")
+                # Gather context in parallel for faster execution
+                running_apps, chrome_tabs, chrome_tabs_raw, recent_files, active_projects, current_project = gather_context_parallel(file_tracker)
                 
                 # Build context for Whisper transcription
                 context_parts = [
@@ -485,23 +531,8 @@ def main():
                 from .command_queue import drain_commands
                 queued_commands = drain_commands(max_items=10)
                 if queued_commands:
-                    # Gather context for queued commands
-                    running_apps = list_running_apps()
-                    chrome_tabs = None
-                    chrome_tabs_raw = None
-                    if running_apps and "Google Chrome" in running_apps:
-                        chrome_tabs, chrome_tabs_raw = list_chrome_tabs_with_content()
-                    
-                    recent_files = None
-                    active_projects = None
-                    current_project = None
-                    if file_tracker:
-                        try:
-                            recent_files = file_tracker.get_recent_files()
-                            active_projects = file_tracker.get_active_projects()
-                            current_project = file_tracker.get_current_project()
-                        except Exception as e:
-                            print(f"Warning: Failed to fetch file context: {e}")
+                    # Gather context in parallel for faster execution
+                    running_apps, chrome_tabs, chrome_tabs_raw, recent_files, active_projects, current_project = gather_context_parallel(file_tracker)
                     
                     for text in queued_commands:
                         should_continue = process_command(
