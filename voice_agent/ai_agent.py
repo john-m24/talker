@@ -109,407 +109,19 @@ class AIAgent:
                 )
                 return validated_result
         
-        # Build context for the AI
-        context_parts = [
-            "You are a macOS window control assistant. Parse the user's command and return a JSON response.",
-            "",
-            "Available commands:",
-            "- 'list_apps' or 'list applications' - list running applications",
-            "- 'focus_app' - bring an application to the front (will launch the app if it's not running). Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
-            "- 'place_app' - move an application window to a specific monitor or position. Can specify exact bounds [left, top, right, bottom] calculated from monitor dimensions, or use monitor for simple placement. Can optionally open a file, folder, or project: use 'file_path'/'file_name' (for files) or 'project_name'/'project_path' (for projects/folders).",
-            "- 'switch_tab' - switch to a specific Chrome tab (for existing tabs)",
-            "- 'open_url' - open a URL in Chrome by creating a new tab (for new tabs)",
-            "- 'list_tabs' - list all open Chrome tabs",
-            "- 'close_app' - quit/close an application completely",
-            "- 'close_tab' - close a specific Chrome tab",
-            "- 'activate_preset' - activate a named preset window layout",
-            "- 'list_recent_files' - list recently opened files",
-            "- 'list_projects' - list active projects",
-            "- 'query' - answer general questions about tabs, apps, files, projects, and system state",
-            "",
-            f"Currently running applications: {', '.join(running_apps) if running_apps else 'None'}",
-        ]
-        
-        # Include recent query responses if available (for follow-ups)
-        try:
-            if self.cache_manager and hasattr(self.cache_manager, "get_recent_queries"):
-                recent_q = self.cache_manager.get_recent_queries(max_count=5)  # type: ignore[attr-defined]
-                if recent_q:
-                    qa_lines = []
-                    for qa in recent_q:
-                        q = str(qa.get("question", "")).strip()
-                        a = str(qa.get("answer", "")).strip()
-                        if q and a:
-                            qa_lines.append(f"Q: {q}\nA: {a}")
-                    if qa_lines:
-                        context_parts.append("Recent query responses (for context, most recent first):\n" + "\n\n".join(qa_lines))
-        except Exception:
-            pass
-        
-        # Include activity history if available (for temporal references)
-        try:
-            if self.cache_manager and hasattr(self.cache_manager, "get_activity_history"):
-                activity_history = self.cache_manager.get_activity_history(max_count=20)  # type: ignore[attr-defined]
-                if activity_history:
-                    import time
-                    from .monitoring import get_active_app, get_active_chrome_tab
-                    
-                    # Get current state to filter out command-initiated activities
-                    current_app = None
-                    current_tab_index = None
-                    try:
-                        current_app = get_active_app()
-                        current_tab = get_active_chrome_tab()
-                        if current_tab:
-                            current_tab_index = current_tab.get("index")
-                    except Exception:
-                        # If state retrieval fails, fall back to showing all activities
-                        pass
-                    
-                    activity_lines = []
-                    for activity in activity_history:
-                        action = activity.get("action", "")
-                        details = activity.get("details", {})
-                        timestamp = activity.get("timestamp", 0)
-                        age_seconds = int(time.time() - timestamp) if timestamp else 0
-                        age_str = f"{age_seconds}s ago" if age_seconds < 60 else f"{age_seconds // 60}m ago"
-                        
-                        if action == "switch_tab":
-                            from_tab = details.get("from_tab")
-                            to_tab = details.get("to_tab")
-                            # Skip if this activity switched TO the current tab (command-initiated)
-                            if to_tab == current_tab_index:
-                                continue
-                            tab_info = details.get("tab_info", {})
-                            title = tab_info.get("title", "")
-                            activity_lines.append(f"  {age_str}: Switched from tab {from_tab} to tab {to_tab} ({title})")
-                        elif action == "activate_app":
-                            app_name = details.get("app_name", "")
-                            # Skip if this activity activated the current app (command-initiated)
-                            if app_name == current_app:
-                                continue
-                            previous_app = details.get("previous_app")
-                            if previous_app:
-                                activity_lines.append(f"  {age_str}: Activated {app_name} (was {previous_app})")
-                            else:
-                                activity_lines.append(f"  {age_str}: Activated {app_name}")
-                        elif action == "place_app":
-                            app_name = details.get("app_name", "")
-                            # Skip if this activity moved the current app (command-initiated)
-                            if app_name == current_app:
-                                continue
-                            activity_lines.append(f"  {age_str}: Moved {app_name} window")
-                        elif action == "close_tab":
-                            closed_tabs = details.get("closed_tabs", [])
-                            activity_lines.append(f"  {age_str}: Closed tab(s) {closed_tabs}")
-                        elif action == "open_url":
-                            url = details.get("url", "")
-                            activity_lines.append(f"  {age_str}: Opened URL {url}")
-                    
-                    if activity_lines:
-                        context_parts.append("\nRecent activity history (most recent first, excluding command-initiated actions):\n" + "\n".join(activity_lines))
-        except Exception:
-            pass
-        
-        # Include current state snapshot if available
-        try:
-            from .config import STATE_SNAPSHOT_ENABLED
-            if STATE_SNAPSHOT_ENABLED:
-                # Use provided instance if available, otherwise create new one
-                snapshotter = state_snapshotter
-                if snapshotter is None:
-                    from .monitoring import StateSnapshotter
-                    snapshotter = StateSnapshotter()
-                state_snapshot = snapshotter.format_snapshot_for_llm()
-                if state_snapshot:
-                    context_parts.append("\n" + state_snapshot)
-        except Exception:
-            pass
-        
-        # Add file context if available
-        if recent_files:
-            # Prioritize code files in context
-            code_files = [f for f in recent_files if f.get('type') == 'code']
-            other_files = [f for f in recent_files if f.get('type') != 'code']
-            top_files = (code_files[:10] + other_files[:5])[:10]
-            
-            if top_files:
-                file_info = []
-                for f in top_files:
-                    file_name = f.get('name', '')
-                    file_type = f.get('type', 'other')
-                    app = f.get('app', '')
-                    if app:
-                        file_info.append(f"{file_name} ({file_type}, default app: {app})")
-                    else:
-                        file_info.append(f"{file_name} ({file_type})")
-                
-                context_parts.append(
-                    f"Recently opened files (top 10, prioritizing code files): {', '.join(file_info)}"
-                )
-        
-        if current_project:
-            project_name = current_project.get('name', 'Unknown')
-            project_path = current_project.get('path', '')
-            context_parts.append(
-                f"Current project: {project_name} ({project_path})"
-            )
-        
-        if active_projects:
-            # Include all active projects, not just top 5
-            project_info = []
-            for p in active_projects:
-                name = p.get('name', '')
-                path = p.get('path', '')
-                if path:
-                    project_info.append(f"{name} ({path})")
-                else:
-                    project_info.append(name)
-            context_parts.append(
-                f"All active projects ({len(active_projects)} total): {', '.join(project_info)}"
-            )
-        
-        # Add available presets context if presets are configured
-        if available_presets:
-            context_parts.append(
-                f"Available presets: {', '.join(available_presets)}"
-            )
-        
-        # Add Chrome tabs context if available
-        # First, include raw AppleScript output for AI to parse
-        if chrome_tabs_raw:
-            context_parts.append(
-                f"Raw Chrome tabs data from AppleScript (parse this to find ALL tabs):\n{chrome_tabs_raw}"
-            )
-            context_parts.append(
-                "IMPORTANT: Parse the raw data above to find ALL tabs. The format is: "
-                "globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, "
-                "nextGlobalIndex, \"nextTitle\", \"nextUrl\", windowIndex, localIndex, isActive, ..."
-            )
-            context_parts.append(
-                "Each tab entry consists of 6 values: globalIndex (1-based across all windows), "
-                "title (quoted string), url (quoted string), windowIndex (1-based), "
-                "localIndex (1-based within window), isActive (true/false)."
-            )
-        
-        # Also include parsed tabs for reference (may be incomplete due to parsing issues)
-        if chrome_tabs:
-            tabs_info = []
-            for tab in chrome_tabs:  # Include all tabs since we're using summaries
-                domain = tab.get('domain', 'N/A')
-                title = tab.get('title', 'N/A')
-                url = tab.get('url', '')
-                content_summary = tab.get('content_summary', '')
-                active = " (ACTIVE)" if tab.get('is_active') else ""
-                window = f" [Window {tab.get('window_index', '?')}]" if tab.get('window_index') else ""
-                
-                # Format for AI analysis: clear structure with all information
-                tab_str = f"Tab {tab['index']} [{domain}]{active}{window}"
-                tab_str += f"\n  Title: {title}"
-                if url:
-                    tab_str += f"\n  URL: {url}"
-                if content_summary:
-                    # Include full content summary for AI analysis
-                    content_display = content_summary[:500] + "..." if len(content_summary) > 500 else content_summary
-                    tab_str += f"\n  Content: {content_display}"
-                tabs_info.append(tab_str)
-            
-            if tabs_info:
-                context_parts.append(
-                    f"Parsed Chrome tabs ({len(chrome_tabs)} found - may be incomplete, use raw data above for complete list):\n" + "\n\n".join(tabs_info)
-                )
-        
-        if installed_apps:
-            # Include all installed apps - no limit
-            context_parts.append(
-                f"All installed applications: {', '.join(installed_apps)}"
-            )
-        
-        # Add monitor context for window placement
-        from .config import MONITORS
-        if MONITORS:
-            monitor_info = []
-            for monitor_name, monitor_config in MONITORS.items():
-                x = monitor_config.get("x", 0)
-                y = monitor_config.get("y", 0)
-                w = monitor_config.get("w", 1920)
-                h = monitor_config.get("h", 1080)
-                monitor_info.append(f"{monitor_name}: {{x: {x}, y: {y}, w: {w}, h: {h}}}")
-            context_parts.append(
-                f"Available monitors: {', '.join(monitor_info)}"
-            )
-        
-        context_parts.extend([
-            "",
-            "User command:",
+        # Build optimized prompt for the AI
+        prompt = self._build_optimized_prompt(
             normalized_text,
-            "",
-            "IMPORTANT: The user may give multiple commands in a single utterance.",
-            "Look for conjunctions like 'and', 'then', 'also' that indicate multiple commands.",
-            "Examples of multiple commands:",
-            "- 'Open google on the left and cursor on the right' -> two place_app commands",
-            "- 'Focus chrome and list tabs' -> focus_app and list_tabs commands",
-            "- 'Put X on left and Y on right' -> two place_app commands",
-            "",
-            "Return a JSON object with:",
-            "- 'commands': an array of intent objects (even if there's only one command)",
-            "- 'needs_clarification': (boolean) true if any command is ambiguous, missing information, or unclear; false otherwise",
-            "- 'clarification_reason': (string, optional) brief explanation of why clarification is needed, or null if not needed",
-            "",
-            "Each intent object in the 'commands' array should have:",
-            "- 'type': either 'list_apps', 'focus_app', 'place_app', 'switch_tab', 'list_tabs', 'close_app', 'close_tab', 'activate_preset', 'list_recent_files', or 'list_projects'",
-            "- 'app_name': (for focus_app, place_app, and close_app, string, required for close_app, optional for focus_app/place_app when file/project is specified) the exact application name - MUST be from the installed apps list. Verify the app exists in installed apps before using it. If the user mentions something that's not an app (like a file name), do NOT use it as app_name. If the user specifies an app, use it. If the user opens a file/project without specifying an app, intelligently infer the best app from ALL installed apps based on file type, file extension, and context. Prefer matching from running apps, but if not found, use the closest match from installed apps (focus_app and place_app will launch the app if it's not running) (non-empty string if provided)",
-            "- 'file_path': (for focus_app and place_app, string, optional) exact file path to open in the app",
-            "- 'file_name': (for focus_app and place_app, string, optional) file name for fuzzy matching (use this if user says 'open x file in app' or 'open x file in app on monitor')",
-            "- 'project_path': (for focus_app and place_app, string, optional) exact project/folder path to open in the app",
-            "- 'project_name': (for focus_app and place_app, string, optional) project/folder name - MUST match the EXACT project name from the active projects list. When the user mentions a project name (e.g., 'anythingllm', 'anything llm', 'anything-llm'), find the matching project in the active projects list and use its EXACT name. For example, if the user says 'anythingllm' or 'anything llm', and the active projects list contains 'anything-llm', use 'anything-llm' as the project_name. Match user input to the exact project name from the list, accounting for variations in spacing, hyphens, and case.",
-            "- 'monitor': (for place_app, enum, optional) MUST be one of the monitor names from the 'Available monitors' list in context. DO NOT use monitor names that don't exist in the available monitors list. Optional if bounds provided.",
-            "- 'bounds': (for place_app, array<integer>, optional) exact window bounds [left, top, right, bottom] in absolute screen coordinates. AI calculates these based on monitor dimensions and user intent. PREFERRED when user requests positioning like 'left half', 'right side', 'maximize', or specific dimensions.",
-            "- 'tab_index': (for switch_tab, integer, required) the tab number - YOU MUST analyze all tabs and return the specific tab_index of the best matching tab (positive integer, 1-based)",
-            "- 'tab_indices': (for close_tab, array<integer>, required) array of tab indices - for single tab use [3], for multiple tabs use [2, 5, 8] (array of positive integers, non-empty, 1-based)",
-            "- 'preset_name': (for activate_preset, string, required) the exact preset name from the available presets list (case-insensitive matching is supported) (non-empty string)",
-            "",
-            "CRITICAL: Monitor name validation:",
-            "You MUST ONLY use monitor names that appear in the 'Available monitors' list provided in the context.",
-            "If the user says 'right' or 'left' but those monitors don't exist in the available monitors list, DO NOT use them as monitor names.",
-            "Instead, calculate bounds based on the available monitor(s). For example:",
-            "- User says 'put X on right' but only 'main' exists -> calculate bounds for right half of main monitor",
-            "- User says 'put X on left monitor' but only 'main' exists -> calculate bounds for left half of main monitor",
-            "",
-            "Monitor placement patterns to recognize:",
-            "- 'put X on [monitor] monitor' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists in available monitors)",
-            "- 'move X to [monitor] screen/display' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists in available monitors)",
-            "- 'put X on left half' or 'snap X to left' -> type: 'place_app', app_name: X, bounds: [monitor_x, monitor_y, monitor_x + monitor_w/2, monitor_y + monitor_h] (use available monitor, calculate bounds)",
-            "- 'put X on right half' or 'snap X to right' -> type: 'place_app', app_name: X, bounds: [monitor_x + monitor_w/2, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use available monitor, calculate bounds)",
-            "- 'resize X to 1200x800' -> type: 'place_app', app_name: X, bounds: [monitor_x + (monitor_w-1200)/2, monitor_y + (monitor_h-800)/2, monitor_x + (monitor_w-1200)/2 + 1200, monitor_y + (monitor_h-800)/2 + 800]",
-            "- 'center X on [monitor]' -> type: 'place_app', app_name: X, monitor: [monitor] (if exists), bounds: [calculate centered based on current window size]",
-            "- 'maximize X' -> type: 'place_app', app_name: X, bounds: [monitor_x, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use available monitor)",
-            "- 'show X on [monitor]' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists)",
-            "- 'open X on [monitor]' -> type: 'place_app', monitor: [monitor] (ONLY if monitor exists)",
-            "- 'open X file in Y app on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor] (ONLY if monitor exists)",
-            "- 'open X in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor] (ONLY if monitor exists)",
-            "- 'put X file in Y on [monitor]' -> type: 'place_app', app_name: Y, file_name: X, monitor: [monitor] (ONLY if monitor exists)",
-            "- 'open X project in Y app on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor] (ONLY if monitor exists)",
-            "- 'open X folder in Y on [monitor]' -> type: 'place_app', app_name: Y, project_name: X, monitor: [monitor] (ONLY if monitor exists)",
-            "",
-            "Window bounds calculation guidance:",
-            "When user requests positioning (left/right half, maximize, specific dimensions), ALWAYS calculate bounds instead of using monitor names.",
-            "You have access to monitor dimensions in the context. Calculate exact bounds [left, top, right, bottom] based on user intent and monitor coordinates.",
-            "For 'left half': [monitor_x, monitor_y, monitor_x + monitor_w/2, monitor_y + monitor_h] (use first/only available monitor)",
-            "For 'right half': [monitor_x + monitor_w/2, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use first/only available monitor)",
-            "For specific dimensions like '1200x800', center on monitor: [monitor_x + (monitor_w-1200)/2, monitor_y + (monitor_h-800)/2, monitor_x + (monitor_w-1200)/2 + 1200, monitor_y + (monitor_h-800)/2 + 800]",
-            "For 'maximize', use full monitor: [monitor_x, monitor_y, monitor_x + monitor_w, monitor_y + monitor_h] (use first/only available monitor)",
-            "If user mentions a monitor name that doesn't exist, use the available monitor(s) and calculate bounds based on the positioning intent.",
-            "",
-            "If the user wants to focus an app, match their fuzzy input to the exact app name from the running apps list.",
-            "If no matching app is found in running apps, use the closest match from installed apps.",
-            "CRITICAL: Before using an app_name, verify it exists in the installed apps list. If the app name is not in the installed apps list, it is likely incorrect.",
-            "If the user says 'open [file]' or 'open [file] on [monitor]' without specifying an app, you MUST intelligently infer the best app from ALL installed apps based on:",
-            "1. File extension and type (e.g., .mov/.mp4 -> video player, .py/.js -> code editor, .jpg/.png -> image viewer)",
-            "2. File's default app (if available in recent_files context)",
-            "3. Common apps for that file type from the installed apps list",
-            "4. User's likely intent (e.g., code files -> code editor, videos -> video player)",
-            "Look through ALL installed apps and pick the most appropriate one. For example:",
-            "- Video files (.mov, .mp4, .avi, .mkv) -> find any video player in installed apps (QuickTime Player, VLC, IINA, etc.)",
-            "- Image files (.jpg, .png, .gif, .webp) -> find any image viewer in installed apps (Preview, Photos, etc.)",
-            "- Code files (.py, .js, .ts, .jsx, .tsx) -> find any code editor in installed apps (Cursor, VS Code, PyCharm, etc.)",
-            "- PDF files -> find any PDF viewer in installed apps (Preview, Adobe Acrobat Reader, etc.)",
-            "- Text files (.txt, .md) -> find any text editor in installed apps (TextEdit, Cursor, VS Code, etc.)",
-            "If you cannot determine the app from the file type and installed apps, set needs_clarification to true and ask which app to use.",
-            "IMPORTANT: focus_app and place_app commands can open apps even if they're not currently running - the system will launch them automatically.",
-            "When the user says 'open [App]' or 'launch [App]', use type 'focus_app' - it will launch the app if needed.",
-            "If the user wants to place an app on a monitor, use type 'place_app' and extract the monitor name.",
-            "If the user says 'open X file in Y app on [monitor]', use type 'place_app' with app_name: Y, file_name: X, and monitor: [monitor].",
-            "If the user says 'open X project in Y app on [monitor]' or 'open X folder in Y on [monitor]', use type 'place_app' with app_name: Y, project_name: X, and monitor: [monitor].",
-            "If the user says 'open [file] on [monitor]' without specifying an app, use type 'place_app' with file_name: [file], app_name: [inferred from file type], and monitor: [monitor].",
-            "CRITICAL: When the user mentions a project name, you MUST match it to the EXACT project name from the active projects list. For example:",
-            "- User says 'anythingllm' or 'anything llm' -> match to 'anything-llm' from the list",
-            "- User says 'talk to computer' -> match to 'talk-to-computer' from the list",
-            "- User says 'private gpt' -> match to 'private-gpt' from the list",
-            "Look through the active projects list and find the project that matches the user's input, accounting for variations in spacing, hyphens, underscores, and case. Use the EXACT name from the list, not the user's input.",
-            "If the user wants to switch tabs, you MUST analyze ALL open tabs and select the best match.",
-            "CRITICAL: You have access to RAW Chrome tabs data from AppleScript. Parse this raw data to find ALL tabs.",
-            "The raw data format is: globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, nextGlobalIndex, \"nextTitle\", ...",
-            "Each tab entry has 6 values separated by commas. Parse ALL entries in the raw data.",
-            "",
-            "You also have parsed tab information (may be incomplete), but ALWAYS use the raw data as the source of truth.",
-            "IMPORTANT: Tab information includes:",
-            "- Tab index (globalIndex - use this in 'tab_index' field)",
-            "- Domain (extracted from URL, e.g., 'reddit.com', 'github.com')",
-            "- URL (full URL of the tab)",
-            "- Title (tab title)",
-            "- Content summary (page content summary - may be available for parsed tabs)",
-            "- Active status (which tab is currently active)",
-            "",
-            "Analyze the user's request and match it against ALL available tab information from the raw data:",
-            "- If user mentions a website name (e.g., 'reddit', 'github', 'youtube'), match against domains and URLs",
-            "- If user mentions content topics (e.g., 'tab with reddit and local AI', 'tab about Python'), match against content summaries",
-            "- If user mentions a tab title, match against titles",
-            "- Consider ALL fields (domain, URL, title, content) when making your decision",
-            "",
-            "Examples:",
-            "- 'switch to reddit' -> Analyze all tabs, find the one with 'reddit.com' in domain/URL, return tab_index",
-            "- 'go to the tab with reddit and local AI' -> Analyze all tabs, find the one with 'reddit' and 'local AI' in content summary, return tab_index",
-            "- 'go to github' -> Analyze all tabs, find the one with 'github.com' in domain/URL, return tab_index (use switch_tab)",
-            "- 'switch to tab about Python' -> Analyze all tabs, find the one with 'Python' in content summary or title, return tab_index",
-            "- 'open chatgpt in chrome' -> User wants to open a NEW tab, return type: 'open_url', url: 'https://chatgpt.com'",
-            "- 'open github in chrome' -> User wants to open a NEW tab, return type: 'open_url', url: 'https://github.com'",
-            "",
-            "DECISION: switch_tab vs open_url:",
-            "- Use 'switch_tab' when user wants to go to an EXISTING tab (e.g., 'go to github', 'switch to reddit tab', 'show me the youtube tab')",
-            "- Use 'open_url' when user explicitly wants to OPEN a NEW tab (e.g., 'open chatgpt in chrome', 'open a new tab for github', 'open youtube in chrome')",
-            "- If user says 'open [site]' and a tab already exists, you can still use 'open_url' if the intent is clearly to create a new tab",
-            "- When in doubt, analyze existing tabs first: if a matching tab exists and user says 'go to' or 'switch to', use 'switch_tab'; if user says 'open [site] in chrome', use 'open_url'",
-            "",
-            "QUESTION DETECTION:",
-            "- If the input is a question (starts with who/what/when/where/why/how or ends with '?'), return a single 'query' intent:",
-            "  {\"type\": \"query\", \"question\": \"[user's original question]\"}",
-            "- Do not generate commands when it's clearly a question.",
-            "",
-            "CRITICAL: You MUST return 'tab_index' (integer) for switch_tab or 'tab_indices' (array<integer>) for close_tab when you find matching tab(s).",
-            "For open_url: Return 'url' (string) - the URL to open (e.g., 'https://chatgpt.com', 'https://github.com'). The system will normalize it if needed.",
-            "Do NOT return 'tab_title' or 'content_query' - return the specific 'tab_index' or 'tab_indices' of the matching tab(s), or 'url' for open_url.",
-            "For close_tab: Always use 'tab_indices' array, even for single tab (e.g., tab_indices: [3] instead of tab_index: 3).",
-            "If no matching tab is found for switch_tab and user wants to go to existing tab, set 'needs_clarification' to true.",
-            "For open_url, you don't need to check if tab exists - just return the URL to open.",
-            "If the user asks to list tabs or see what tabs are open, return type 'list_tabs'.",
-            "If the user wants to close/quit an app, use type 'close_app' and extract the app name.",
-            "Patterns for close_app: 'close [App]', 'quit [App]', 'exit [App]' -> type: 'close_app'.",
-            "If the user wants to close a tab, use type 'close_tab' and extract tab_indices array.",
-            "For single tab: 'close tab 3' -> type: 'close_tab', tab_indices: [3]",
-            "For multiple tabs: 'close tabs 1, 3, and 5' -> type: 'close_tab', tab_indices: [1, 3, 5]",
-            "For bulk operations: 'close all reddit tabs' -> analyze all tabs, find all matching tabs, return tab_indices: [2, 5, 8]",
-            "Patterns for close_tab: 'close tab [Number]', 'close tabs [Numbers]', 'close all [domain] tabs' -> type: 'close_tab', tab_indices: [array]",
-            "If the user wants to activate a preset, use type 'activate_preset' and extract the preset name.",
-            "Preset activation patterns to recognize:",
-            "- 'activate [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
-            "- '[preset name]' (standalone, if it matches an available preset) -> type: 'activate_preset', preset_name: '[preset name]'",
-            "- 'set up [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
-            "- 'load [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
-            "- 'switch to [preset name]' -> type: 'activate_preset', preset_name: '[preset name]'",
-            "Match the user's input to the available presets list (case-insensitive, partial matching supported).",
-            "If multiple presets match or preset name is ambiguous, set needs_clarification to true.",
-            "If preset name is not found in available presets, set needs_clarification to true.",
-            "If the command is unclear, default to 'list_apps'.",
-            "",
-            "When parsing multiple commands:",
-            "- Split on conjunctions: 'and', 'then', 'also', 'plus'",
-            "- Each command should be parsed independently",
-            "- Maintain the order of commands as spoken",
-            "- If one command is unclear, still parse the others if possible",
-            "",
-            "Clarification assessment:",
-            "Set 'needs_clarification' to true if:",
-            "- Any command is ambiguous (multiple possible interpretations)",
-            "- Required information is missing for any command (e.g., app name not found in running apps, monitor not specified for place_app)",
-            "- Any command doesn't make sense in context",
-            "- The intent is unclear or vague for any command",
-            "Examples: 'bring it to view' when multiple apps are running, 'focus' without app name, 'do the thing', etc.",
-            "If all commands are clear and all required information is present, set 'needs_clarification' to false.",
-            "When clarification is needed, still return your best guess for the intents, but flag it for clarification.",
-        ])
-        
-        prompt = "\n".join(context_parts)
+            running_apps,
+            installed_apps,
+            chrome_tabs,
+            chrome_tabs_raw,
+            available_presets,
+            recent_files,
+            active_projects,
+            current_project,
+            state_snapshotter
+        )
         
         try:
             # Try with response_format first (for models that support JSON mode)
@@ -600,6 +212,284 @@ class AIAgent:
             traceback.print_exc()
             return {"commands": [{"type": "list_apps"}], "needs_clarification": False, "clarification_reason": None}
     
+    def _build_optimized_prompt(
+        self,
+        normalized_text: str,
+        running_apps: List[str],
+        installed_apps: Optional[List[str]],
+        chrome_tabs: Optional[List[Dict[str, Union[str, int]]]],
+        chrome_tabs_raw: Optional[str],
+        available_presets: Optional[List[str]],
+        recent_files: Optional[List[Dict]],
+        active_projects: Optional[List[Dict]],
+        current_project: Optional[Dict],
+        state_snapshotter: Optional[Any]
+    ) -> str:
+        """
+        Build optimized prompt for LLM with condensed structure and rich context.
+        
+        Returns:
+            Complete prompt string
+        """
+        context_parts = []
+        
+        # 1. System role + user command (immediate context)
+        context_parts.extend([
+            "You are a macOS window control assistant. Parse the user's command and return a JSON response.",
+            "",
+            "User command:",
+            normalized_text,
+            "",
+        ])
+        
+        # 2. Available commands (compact list)
+        context_parts.extend([
+            "Available commands:",
+            "- list_apps: list running applications",
+            "- focus_app: bring app to front (launches if needed), can open file/project",
+            "- place_app: move app window to monitor/position, can open file/project",
+            "- switch_tab: switch to existing Chrome tab",
+            "- open_url: open URL in new Chrome tab",
+            "- list_tabs: list all open Chrome tabs",
+            "- close_app: quit/close application",
+            "- close_tab: close Chrome tab(s)",
+            "- activate_preset: activate preset window layout",
+            "- list_recent_files: list recently opened files",
+            "- list_projects: list active projects",
+            "- query: answer questions about system state",
+            "",
+        ])
+        
+        # 3. Context data (rich, well-formatted)
+        if running_apps:
+            context_parts.append(f"Running applications: {', '.join(running_apps)}")
+        else:
+            context_parts.append("Running applications: None")
+        
+        if installed_apps:
+            context_parts.append(f"Installed applications ({len(installed_apps)} total): {', '.join(installed_apps)}")
+        
+        # Recent queries (keep at 5)
+        try:
+            if self.cache_manager and hasattr(self.cache_manager, "get_recent_queries"):
+                recent_q = self.cache_manager.get_recent_queries(max_count=5)  # type: ignore[attr-defined]
+                if recent_q:
+                    qa_lines = []
+                    for qa in recent_q:
+                        q = str(qa.get("question", "")).strip()
+                        a = str(qa.get("answer", "")).strip()
+                        if q and a:
+                            qa_lines.append(f"Q: {q}\nA: {a}")
+                    if qa_lines:
+                        context_parts.append("\nRecent query responses (most recent first):\n" + "\n\n".join(qa_lines))
+        except Exception:
+            pass
+        
+        # Activity history (reduced from 20 to 15)
+        try:
+            if self.cache_manager and hasattr(self.cache_manager, "get_activity_history"):
+                activity_history = self.cache_manager.get_activity_history(max_count=15)  # type: ignore[attr-defined]
+                if activity_history:
+                    import time
+                    from .monitoring import get_active_app, get_active_chrome_tab
+                    
+                    current_app = None
+                    current_tab_index = None
+                    try:
+                        current_app = get_active_app()
+                        current_tab = get_active_chrome_tab()
+                        if current_tab:
+                            current_tab_index = current_tab.get("index")
+                    except Exception:
+                        pass
+                    
+                    activity_lines = []
+                    for activity in activity_history:
+                        action = activity.get("action", "")
+                        details = activity.get("details", {})
+                        timestamp = activity.get("timestamp", 0)
+                        age_seconds = int(time.time() - timestamp) if timestamp else 0
+                        age_str = f"{age_seconds}s ago" if age_seconds < 60 else f"{age_seconds // 60}m ago"
+                        
+                        if action == "switch_tab":
+                            from_tab = details.get("from_tab")
+                            to_tab = details.get("to_tab")
+                            if to_tab == current_tab_index:
+                                continue
+                            tab_info = details.get("tab_info", {})
+                            title = tab_info.get("title", "")
+                            activity_lines.append(f"  {age_str}: Switched from tab {from_tab} to tab {to_tab} ({title})")
+                        elif action == "activate_app":
+                            app_name = details.get("app_name", "")
+                            if app_name == current_app:
+                                continue
+                            previous_app = details.get("previous_app")
+                            if previous_app:
+                                activity_lines.append(f"  {age_str}: Activated {app_name} (was {previous_app})")
+                            else:
+                                activity_lines.append(f"  {age_str}: Activated {app_name}")
+                        elif action == "place_app":
+                            app_name = details.get("app_name", "")
+                            if app_name == current_app:
+                                continue
+                            activity_lines.append(f"  {age_str}: Moved {app_name} window")
+                        elif action == "close_tab":
+                            closed_tabs = details.get("closed_tabs", [])
+                            activity_lines.append(f"  {age_str}: Closed tab(s) {closed_tabs}")
+                        elif action == "open_url":
+                            url = details.get("url", "")
+                            activity_lines.append(f"  {age_str}: Opened URL {url}")
+                    
+                    if activity_lines:
+                        context_parts.append("\nRecent activity history (most recent first):\n" + "\n".join(activity_lines))
+        except Exception:
+            pass
+        
+        # State snapshot
+        try:
+            from .config import STATE_SNAPSHOT_ENABLED
+            if STATE_SNAPSHOT_ENABLED:
+                snapshotter = state_snapshotter
+                if snapshotter is None:
+                    from .monitoring import StateSnapshotter
+                    snapshotter = StateSnapshotter()
+                state_snapshot = snapshotter.format_snapshot_for_llm()
+                if state_snapshot:
+                    context_parts.append("\n" + state_snapshot)
+        except Exception:
+            pass
+        
+        # Recent files (reduced from 10 to 7 code files)
+        if recent_files:
+            code_files = [f for f in recent_files if f.get('type') == 'code']
+            other_files = [f for f in recent_files if f.get('type') != 'code']
+            top_files = (code_files[:7] + other_files[:3])[:7]
+            
+            if top_files:
+                file_info = []
+                for f in top_files:
+                    file_name = f.get('name', '')
+                    file_type = f.get('type', 'other')
+                    app = f.get('app', '')
+                    if app:
+                        file_info.append(f"{file_name} ({file_type}, default app: {app})")
+                    else:
+                        file_info.append(f"{file_name} ({file_type})")
+                
+                context_parts.append(f"Recently opened files: {', '.join(file_info)}")
+        
+        if current_project:
+            project_name = current_project.get('name', 'Unknown')
+            project_path = current_project.get('path', '')
+            context_parts.append(f"Current project: {project_name} ({project_path})")
+        
+        if active_projects:
+            project_info = []
+            for p in active_projects:
+                name = p.get('name', '')
+                path = p.get('path', '')
+                if path:
+                    project_info.append(f"{name} ({path})")
+                else:
+                    project_info.append(name)
+            context_parts.append(f"Active projects ({len(active_projects)}): {', '.join(project_info)}")
+        
+        if available_presets:
+            context_parts.append(f"Available presets: {', '.join(available_presets)}")
+        
+        # Chrome tabs (limit content_summary to 200 chars)
+        if chrome_tabs_raw:
+            context_parts.append(f"Raw Chrome tabs data (parse to find ALL tabs):\n{chrome_tabs_raw}")
+            context_parts.append("Format: globalIndex, \"title\", \"url\", windowIndex, localIndex, isActive, ... (6 values per tab)")
+        
+        if chrome_tabs:
+            tabs_info = []
+            for tab in chrome_tabs:
+                domain = tab.get('domain', 'N/A')
+                title = tab.get('title', 'N/A')
+                url = tab.get('url', '')
+                content_summary = tab.get('content_summary', '')
+                active = " (ACTIVE)" if tab.get('is_active') else ""
+                window = f" [Window {tab.get('window_index', '?')}]" if tab.get('window_index') else ""
+                
+                tab_str = f"Tab {tab['index']} [{domain}]{active}{window}\n  Title: {title}"
+                if url:
+                    tab_str += f"\n  URL: {url}"
+                if content_summary:
+                    content_display = content_summary[:200] + "..." if len(content_summary) > 200 else content_summary
+                    tab_str += f"\n  Content: {content_display}"
+                tabs_info.append(tab_str)
+            
+            if tabs_info:
+                context_parts.append(f"Parsed Chrome tabs ({len(chrome_tabs)}):\n" + "\n\n".join(tabs_info))
+        
+        # Monitors
+        from .config import MONITORS
+        if MONITORS:
+            monitor_info = []
+            for monitor_name, monitor_config in MONITORS.items():
+                x = monitor_config.get("x", 0)
+                y = monitor_config.get("y", 0)
+                w = monitor_config.get("w", 1920)
+                h = monitor_config.get("h", 1080)
+                monitor_info.append(f"{monitor_name}: {{x: {x}, y: {y}, w: {w}, h: {h}}}")
+            context_parts.append(f"Available monitors: {', '.join(monitor_info)}")
+        
+        # 4. Field definitions (structured, compact)
+        context_parts.extend([
+            "",
+            "Fields:",
+            "type (enum: list_apps|focus_app|place_app|switch_tab|open_url|close_app|close_tab|activate_preset|list_tabs|list_recent_files|list_projects|query)",
+            "app_name (str, must exist in installed_apps)",
+            "file_path/name (str, opt)",
+            "project_path/name (str, opt, exact match from active_projects)",
+            "monitor (str, must exist in available_monitors)",
+            "bounds ([left,top,right,bottom], opt)",
+            "tab_index (int, 1-based, from raw Chrome tabs data)",
+            "tab_indices ([int], 1-based)",
+            "preset_name (str, from available_presets)",
+            "url (str, for open_url)",
+            "",
+        ])
+        
+        # 5. Validation rules (consolidated, essential only)
+        context_parts.extend([
+            "Validation:",
+            "(1) Monitor names must exist in available_monitors list",
+            "(2) app_name must be in installed_apps",
+            "(3) project_name must match exact from active_projects",
+            "(4) Use raw Chrome tabs data as source of truth for tab_index",
+            "(5) For file/project opening without app specified, infer best app from file type and installed_apps",
+            "",
+        ])
+        
+        # 6. Few-shot examples (2-3 examples showing inference)
+        context_parts.extend([
+            "Examples:",
+            "Input: 'focus chrome' | Context: running_apps=['Google Chrome', 'Cursor']",
+            "Output: {\"commands\": [{\"type\": \"focus_app\", \"app_name\": \"Google Chrome\"}], \"needs_clarification\": false, \"clarification_reason\": null}",
+            "",
+            "Input: 'put cursor on left and chrome on right' | Context: monitors={'left': {...}, 'right': {...}}",
+            "Output: {\"commands\": [{\"type\": \"place_app\", \"app_name\": \"Cursor\", \"monitor\": \"left\"}, {\"type\": \"place_app\", \"app_name\": \"Google Chrome\", \"monitor\": \"right\"}], \"needs_clarification\": false, \"clarification_reason\": null}",
+            "",
+            "Input: 'switch to reddit' | Context: chrome_tabs with domain='reddit.com' at tab_index=3",
+            "Output: {\"commands\": [{\"type\": \"switch_tab\", \"tab_index\": 3}], \"needs_clarification\": false, \"clarification_reason\": null}",
+            "",
+        ])
+        
+        # 7. Output format (brief JSON structure reminder)
+        context_parts.extend([
+            "Return JSON:",
+            "{\"commands\": [{\"type\": \"...\", ...}], \"needs_clarification\": bool, \"clarification_reason\": str|null}",
+            "",
+            "Multiple commands: Split on 'and', 'then', 'also', 'plus'. Each command parsed independently.",
+            "Clarification: Set needs_clarification=true if ambiguous, missing info, or unclear intent.",
+            "Use switch_tab for existing tabs, open_url for new tabs.",
+            "For questions (who/what/when/where/why/how or '?'), return type: 'query'.",
+        ])
+        
+        return "\n".join(context_parts)
+    
     def _validate_context(
         self,
         cached_result: Dict[str, Union[List[Dict], bool, Optional[str]]],
@@ -659,7 +549,7 @@ class AIAgent:
                             result["clarification_reason"] = f"Preset '{preset_name}' not found in available presets"
         
         return result
-
+    
     def answer_query(
         self,
         question: str,
@@ -876,4 +766,3 @@ class AIAgent:
             return response.choices[0].message.content.strip()
         except Exception as e:
             return f"Sorry, I couldn't answer that due to an error: {e}"
-
